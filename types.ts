@@ -2,12 +2,12 @@
 export type TardinessType = 'kedatangan' | 'kepulangan';
 
 export interface StudentData {
-  name: string;
-  className: string;
-  arrivalTime: string;
-  tardinessType?: TardinessType; // 'kedatangan' or 'kepulangan'
-  targetTime?: string;           // Standard time e.g., '07:30' or '14:00'
-  reason?: string;
+   id: string;
+  databaseId?: string;
+  schoolStartTime: string;
+  durationMinutes: number;
+  category: TardinessCategory;
+  tardinessType?: TardinessType;
 }
 
 export enum TardinessCategory {
