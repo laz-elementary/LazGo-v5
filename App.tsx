@@ -290,15 +290,7 @@ const AIInsight: React.FC<{ records: TardinessRecord[] }> = ({ records }) => {
 
 export default function App() {
   // Persistence for Tardiness Records
-  const [records, setRecords] = useState<TardinessRecord[]>(() => {
-    try {
-      const savedRecords = localStorage.getItem('tardinessRecords');
-      return savedRecords ? JSON.parse(savedRecords) : [];
-    } catch (error) {
-      console.error('Could not parse records from localStorage', error);
-      return [];
-    }
-  });
+  const [records, setRecords] = useState<TardinessRecord[]>([]);
 
   // Persistence for Student Database
   const [studentDatabase, setStudentDatabase] = useState<StudentInfo[]>(() => {
@@ -368,8 +360,40 @@ export default function App() {
   };
 
   useEffect(() => {
-    localStorage.setItem('tardinessRecords', JSON.stringify(records));
-  }, [records]);
+  let masihAktif = true;
+
+  async function muatDataSupabase() {
+    try {
+      const data = await ambilSemuaData();
+
+      if (masihAktif) {
+        setRecords(data);
+        setError(null);
+      }
+    } catch (e: any) {
+      if (masihAktif) {
+        setError(
+          e.message ||
+            'Gagal mengambil data dari Supabase.'
+        );
+      }
+    }
+  }
+
+  // Mengambil data saat LazGo dibuka
+  muatDataSupabase();
+
+  // Mengecek data terbaru setiap 10 detik
+  const interval = window.setInterval(
+    muatDataSupabase,
+    10000
+  );
+
+  return () => {
+    masihAktif = false;
+    window.clearInterval(interval);
+  };
+}, []);
 
   useEffect(() => {
     localStorage.setItem('studentDatabase', JSON.stringify(studentDatabase));
@@ -449,28 +473,44 @@ export default function App() {
       }).length;
 
       const monthlyCountForThisStudent = existingMonthlyCount + 1;
-      setLastSubmittedRecord(newRecord);
-      setLastSubmittedMonthlyCount(monthlyCountForThisStudent);
-
       const historyForAI = dailyRecords;
-      setRecords((prev) => [...prev, newRecord]);
 
-      // 3. AI Report Generation
-      setIsReportLoading(true);
-      setError(null);
+setIsReportLoading(true);
+setError(null);
 
-      try {
-        const generatedOutput = await generateTardinessReport(
-          newRecord,
-          historyForAI,
-          monthlyCountForThisStudent
-        );
-        setOutput(generatedOutput);
-      } catch (e: any) {
-        setError(e.message || 'Gagal membuat laporan. Data siswa tetap tersimpan.');
-      } finally {
-        setIsReportLoading(false);
-      }
+try {
+  // Simpan data ke Supabase
+  const recordTersimpan = await simpanData(newRecord);
+
+  // Tampilkan data yang sudah berhasil tersimpan
+  setRecords((prev) => [
+    ...prev,
+    recordTersimpan,
+  ]);
+
+  setLastSubmittedRecord(recordTersimpan);
+
+  setLastSubmittedMonthlyCount(
+    monthlyCountForThisStudent
+  );
+
+  // Membuat pesan menggunakan Gemini
+  const generatedOutput =
+    await generateTardinessReport(
+      recordTersimpan,
+      historyForAI,
+      monthlyCountForThisStudent
+    );
+
+  setOutput(generatedOutput);
+} catch (e: any) {
+  setError(
+    e.message ||
+      'Data gagal disimpan ke database.'
+  );
+} finally {
+  setIsReportLoading(false);
+}
     },
     [dailyRecords, studentDatabase, classDatabase, records]
   );
@@ -493,9 +533,36 @@ export default function App() {
     }
   }, [lastSubmittedRecord, dailyRecords, lastSubmittedMonthlyCount]);
 
-  const handleDeleteRecord = useCallback((id: string) => {
-    setRecords((prev) => prev.filter((r) => r.id !== id));
-  }, []);
+ const handleDeleteRecord = useCallback(
+  async (id: string) => {
+    const recordYangDihapus = records.find(
+      (record) => record.id === id
+    );
+
+    if (!recordYangDihapus?.databaseId) {
+      setError(
+        'ID database tidak ditemukan. Data belum dapat dihapus.'
+      );
+      return;
+    }
+
+    try {
+      await hapusData(recordYangDihapus.databaseId);
+
+      setRecords((prev) =>
+        prev.filter((record) => record.id !== id)
+      );
+
+      setError(null);
+    } catch (e: any) {
+      setError(
+        e.message ||
+          'Data gagal dihapus dari Supabase.'
+      );
+    }
+  },
+  [records]
+);
 
   const dailyReportFileName = `laporan_keterlambatan_harian_${new Date()
     .toLocaleDateString('id-ID', { year: 'numeric', month: '2-digit', day: '2-digit' })
