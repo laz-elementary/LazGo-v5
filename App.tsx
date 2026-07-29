@@ -5,6 +5,11 @@ import * as XLSX from 'xlsx';
 import { StudentData, TardinessRecord, GeneratedOutput, TardinessCategory } from './types';
 import { generateTardinessReport } from './services/geminiService';
 import {
+  ambilSemuaData,
+  simpanData,
+  hapusData,
+} from './services/database';
+import {
   LogoIcon,
   SummaryIcon,
   WhatsAppIcon,
