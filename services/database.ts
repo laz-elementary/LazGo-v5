@@ -1,41 +1,135 @@
 import { supabase } from "./supabase";
+import {
+  TardinessCategory,
+  TardinessRecord,
+  TardinessType,
+} from "../types";
 
-export type DataKeterlambatan = {
+type DatabaseRow = {
+  id: string;
+  created_at: string;
   tanggal: string;
   kategori: string;
   nama_siswa: string;
   kelas: string;
-  jam_standar: string;
-  jam_aktual: string;
-  alasan: string;
-  pesan_orang_tua: string;
+  jam_standar: string | null;
+  jam_aktual: string | null;
+  alasan: string | null;
+  pesan_orang_tua: string | null;
 };
 
-// Mengambil seluruh data dari Supabase
-export async function ambilSemuaData() {
+function hitungDurasi(
+  jamStandar: string,
+  jamAktual: string
+): number {
+  const standar = new Date(
+    `1970-01-01T${jamStandar}:00`
+  );
+
+  const aktual = new Date(
+    `1970-01-01T${jamAktual}:00`
+  );
+
+  const durasi = Math.round(
+    (aktual.getTime() - standar.getTime()) / 60000
+  );
+
+  return Math.max(0, durasi);
+}
+
+function ubahMenjadiRecord(
+  row: DatabaseRow
+): TardinessRecord {
+  const jamStandar = row.jam_standar || "07:30";
+  const jamAktual = row.jam_aktual || jamStandar;
+
+  const jenis: TardinessType =
+    jamStandar >= "12:00"
+      ? "kepulangan"
+      : "kedatangan";
+
+  return {
+    databaseId: row.id,
+
+    // App LazGo memakai id sebagai tanggal/waktu.
+    id: row.created_at,
+
+    name: row.nama_siswa,
+    className: row.kelas,
+    arrivalTime: jamAktual,
+    targetTime: jamStandar,
+    schoolStartTime: jamStandar,
+    durationMinutes: hitungDurasi(
+      jamStandar,
+      jamAktual
+    ),
+    category:
+      row.kategori as TardinessCategory,
+    reason: row.alasan || "",
+    tardinessType: jenis,
+  };
+}
+
+export async function ambilSemuaData():
+Promise<TardinessRecord[]> {
   const { data, error } = await supabase
     .from("keterlambatan")
     .select("*")
-    .order("created_at", { ascending: false });
+    .order("created_at", {
+      ascending: true,
+    });
 
   if (error) {
-    throw new Error(`Gagal mengambil data: ${error.message}`);
+    throw new Error(
+      `Gagal mengambil data: ${error.message}`
+    );
   }
 
-  return data ?? [];
+  return (data ?? []).map((row) =>
+    ubahMenjadiRecord(row as DatabaseRow)
+  );
 }
 
-// Menyimpan satu data baru ke Supabase
-export async function simpanData(dataBaru: DataKeterlambatan) {
+export async function simpanData(
+  record: TardinessRecord
+): Promise<TardinessRecord> {
   const { data, error } = await supabase
     .from("keterlambatan")
-    .insert([dataBaru])
+    .insert({
+      tanggal: record.id.slice(0, 10),
+      kategori: record.category,
+      nama_siswa: record.name,
+      kelas: record.className,
+      jam_standar: record.schoolStartTime,
+      jam_aktual: record.arrivalTime,
+      alasan: record.reason || "",
+      pesan_orang_tua: "",
+    })
     .select()
     .single();
 
   if (error) {
-    throw new Error(`Gagal menyimpan data: ${error.message}`);
+    throw new Error(
+      `Gagal menyimpan data: ${error.message}`
+    );
   }
 
-  return data;
+  return ubahMenjadiRecord(
+    data as DatabaseRow
+  );
+}
+
+export async function hapusData(
+  databaseId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("keterlambatan")
+    .delete()
+    .eq("id", databaseId);
+
+  if (error) {
+    throw new Error(
+      `Gagal menghapus data: ${error.message}`
+    );
+  }
 }
