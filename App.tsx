@@ -1,3 +1,6 @@
+import type { Session } from '@supabase/supabase-js';
+import { supabase } from './services/supabase';
+import { Login } from './components/Login';
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import * as jspdf from 'jspdf';
 import 'jspdf-autotable';
@@ -290,6 +293,36 @@ const AIInsight: React.FC<{ records: TardinessRecord[] }> = ({ records }) => {
 
 export default function App() {
   // Persistence for Tardiness Records
+  const [session, setSession] =
+  useState<Session | null>(null);
+
+const [authLoading, setAuthLoading] =
+  useState(true);
+
+useEffect(() => {
+  async function periksaLogin() {
+    const { data } =
+      await supabase.auth.getSession();
+
+    setSession(data.session);
+    setAuthLoading(false);
+  }
+
+  periksaLogin();
+
+  const {
+    data: { subscription },
+  } = supabase.auth.onAuthStateChange(
+    (_event, newSession) => {
+      setSession(newSession);
+      setAuthLoading(false);
+    }
+  );
+
+  return () => {
+    subscription.unsubscribe();
+  };
+}, []);
   const [records, setRecords] = useState<TardinessRecord[]>([]);
 
   // Persistence for Student Database
@@ -359,7 +392,12 @@ export default function App() {
     setTheme((prevTheme) => (prevTheme === 'dark' ? 'light' : 'dark'));
   };
 
-  useEffect(() => {
+ useEffect(() => {
+  if (!session) {
+    setRecords([]);
+    return;
+  }
+
   let masihAktif = true;
 
   async function muatDataSupabase() {
@@ -380,10 +418,8 @@ export default function App() {
     }
   }
 
-  // Mengambil data saat LazGo dibuka
   muatDataSupabase();
 
-  // Mengecek data terbaru setiap 10 detik
   const interval = window.setInterval(
     muatDataSupabase,
     10000
@@ -393,7 +429,7 @@ export default function App() {
     masihAktif = false;
     window.clearInterval(interval);
   };
-}, []);
+}, [session]);
 
   useEffect(() => {
     localStorage.setItem('studentDatabase', JSON.stringify(studentDatabase));
@@ -662,7 +698,17 @@ try {
 
     doc.save(`${dailyReportFileName}.pdf`);
   };
+if (authLoading) {
+  return (
+    <div className="min-h-screen flex items-center justify-center text-white">
+      Memeriksa akun...
+    </div>
+  );
+}
 
+if (!session) {
+  return <Login />;
+}
   const TabButton: React.FC<{
     label: string;
     icon?: React.ReactNode;
