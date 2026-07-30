@@ -28,6 +28,15 @@ interface MonthlyReportProps {
 export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDeleteRecord }) => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [selectedDailyDate, setSelectedDailyDate] = useState(() => {
+  const today = new Date();
+
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+});
 
   // Filter state for separate records breakdown table
   const [recordSearch, setRecordSearch] = useState('');
@@ -140,6 +149,54 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDele
     );
   });
 }, [filteredRecordsForMonth]);
+
+  const dailyRecordsForExport = useMemo(() => {
+  const getLocalDateKey = (value: string) => {
+    const date = new Date(value);
+
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+  };
+
+  return allRecords
+    .filter(
+      (record) =>
+        getLocalDateKey(record.id) === selectedDailyDate
+    )
+    .sort((a, b) => {
+      const classComparison = (a.className || '').localeCompare(
+        b.className || '',
+        'id',
+        {
+          numeric: true,
+          sensitivity: 'base',
+        }
+      );
+
+      if (classComparison !== 0) {
+        return classComparison;
+      }
+
+      const nameComparison = (a.name || '').localeCompare(
+        b.name || '',
+        'id',
+        {
+          sensitivity: 'base',
+        }
+      );
+
+      if (nameComparison !== 0) {
+        return nameComparison;
+      }
+
+      return (a.arrivalTime || '').localeCompare(
+        b.arrivalTime || ''
+      );
+    });
+}, [allRecords, selectedDailyDate]);
 
   // Additional detail view table filtering (search, class, category, type, sorting)
   const detailedRecords = useMemo(() => {
@@ -354,6 +411,10 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDele
     }
   };
 
+  const handleExportDailyPDF = () => {
+  // seluruh kode PDF harian
+};
+
   return (
     <div className="space-y-6">
       {/* Header & Filter Card */}
@@ -435,6 +496,48 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDele
             </select>
           </div>
         </div>
+        <div className="mt-5 pt-5 border-t border-gray-200 dark:border-gray-700">
+  <p className="mb-3 text-sm font-bold text-gray-900 dark:text-white">
+    Unduh Rekap Harian
+  </p>
+
+  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+    <div className="w-full sm:max-w-xs">
+      <label
+        htmlFor="daily-date"
+        className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400"
+      >
+        Pilih Tanggal
+      </label>
+
+      <input
+        id="daily-date"
+        type="date"
+        value={selectedDailyDate}
+        onChange={(event) =>
+          setSelectedDailyDate(event.target.value)
+        }
+        className="block w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+      />
+    </div>
+
+    <button
+      type="button"
+      onClick={handleExportDailyPDF}
+      disabled={dailyRecordsForExport.length === 0}
+      className="flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-violet-300 dark:disabled:bg-violet-900/40"
+    >
+      <PdfIcon className="h-4 w-4" />
+      Unduh PDF Harian
+    </button>
+  </div>
+
+  {dailyRecordsForExport.length === 0 && (
+    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+      Belum ada data keterlambatan pada tanggal yang dipilih.
+    </p>
+  )}
+</div>
       </div>
 
       {/* Monthly Summary Statistics Cards */}
