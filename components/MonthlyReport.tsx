@@ -412,7 +412,103 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDele
   };
 
   const handleExportDailyPDF = () => {
-  // seluruh kode PDF harian
+  if (dailyRecordsForExport.length === 0) {
+    alert('Tidak ada data keterlambatan pada tanggal yang dipilih.');
+    return;
+  }
+
+  try {
+    const doc = new jsPDF({
+      orientation: 'landscape',
+    });
+
+    const formattedDate = new Date(
+      `${selectedDailyDate}T00:00:00`
+    ).toLocaleDateString('id-ID', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+    });
+
+    const kedatanganCount = dailyRecordsForExport.filter(
+      (record) => record.tardinessType !== 'kepulangan'
+    ).length;
+
+    const kepulanganCount = dailyRecordsForExport.filter(
+      (record) => record.tardinessType === 'kepulangan'
+    ).length;
+
+    const totalMinutes = dailyRecordsForExport.reduce(
+      (total, record) => total + record.durationMinutes,
+      0
+    );
+
+    doc.setFontSize(16);
+    doc.text(
+      'Rekap Laporan Keterlambatan Siswa Harian',
+      14,
+      18
+    );
+
+    doc.setFontSize(10);
+    doc.setTextColor(100);
+    doc.text(`Tanggal: ${formattedDate}`, 14, 25);
+
+    doc.setFontSize(9);
+    doc.setTextColor(60);
+    doc.text(
+      `Total: ${dailyRecordsForExport.length}x | Kedatangan: ${kedatanganCount}x | Kepulangan: ${kepulanganCount}x | Total Durasi: ${totalMinutes} menit`,
+      14,
+      32
+    );
+
+    const tableColumns = [
+      'Jenis',
+      'Jam Realisasi',
+      'Jam Standar',
+      'Nama Siswa',
+      'Kelas',
+      'Durasi',
+      'Kategori',
+      'Alasan',
+    ];
+
+    const tableRows = dailyRecordsForExport.map((record) => [
+      record.tardinessType === 'kepulangan'
+        ? 'Kepulangan'
+        : 'Kedatangan',
+      record.arrivalTime,
+      record.schoolStartTime ||
+        (record.tardinessType === 'kepulangan'
+          ? '14:00'
+          : '07:30'),
+      record.name,
+      record.className,
+      `${record.durationMinutes} mnt`,
+      record.category,
+      record.reason || '-',
+    ]);
+
+    autoTable(doc, {
+      head: [tableColumns],
+      body: tableRows,
+      startY: 38,
+      styles: {
+        fontSize: 8,
+      },
+      headStyles: {
+        fillColor: [14, 116, 144],
+      },
+    });
+
+    doc.save(
+      `rekap_keterlambatan_harian_${selectedDailyDate}.pdf`
+    );
+  } catch (error) {
+    console.error('Gagal membuat PDF harian:', error);
+    alert('Gagal mengunduh PDF harian. Silakan coba kembali.');
+  }
 };
 
   return (
