@@ -337,7 +337,6 @@ useEffect(() => {
 
   const [isReportLoading, setIsReportLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [lastSubmittedRecord, setLastSubmittedRecord] = useState<TardinessRecord | null>(null);
   const [lastSubmittedMonthlyCount, setLastSubmittedMonthlyCount] = useState<number>(0);
