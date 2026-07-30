@@ -4,6 +4,7 @@ import {
   TardinessRecord,
   TardinessType,
 } from "../types";
+import type { StudentInfo } from "../data/students";
 
 type DatabaseRow = {
   id: string;
@@ -131,5 +132,82 @@ export async function hapusData(
     throw new Error(
       `Gagal menghapus data: ${error.message}`
     );
+  }
+}
+
+export async function simpanDatabaseSiswa(
+  students: StudentInfo[],
+  classNames: string[],
+  mode: "replace" | "merge"
+): Promise<void> {
+  if (mode === "replace") {
+    const { error: deleteStudentsError } = await supabase
+      .from("students")
+      .delete()
+      .not("id", "is", null);
+
+    if (deleteStudentsError) {
+      throw new Error(
+        `Gagal menghapus data siswa lama: ${deleteStudentsError.message}`
+      );
+    }
+
+    const { error: deleteClassesError } = await supabase
+      .from("classes")
+      .delete()
+      .not("id", "is", null);
+
+    if (deleteClassesError) {
+      throw new Error(
+        `Gagal menghapus data kelas lama: ${deleteClassesError.message}`
+      );
+    }
+  }
+
+  const studentRows = students
+    .map((student) => ({
+      name: student.name.trim(),
+      class_name: student.className.trim(),
+    }))
+    .filter(
+      (student) =>
+        student.name !== "" &&
+        student.class_name !== ""
+    );
+
+  if (studentRows.length > 0) {
+    const { error } = await supabase
+      .from("students")
+      .upsert(studentRows, {
+        onConflict: "name,class_name",
+      });
+
+    if (error) {
+      throw new Error(
+        `Gagal menyimpan siswa: ${error.message}`
+      );
+    }
+  }
+
+  const classRows = Array.from(
+    new Set(
+      classNames
+        .map((className) => className.trim())
+        .filter(Boolean)
+    )
+  ).map((name) => ({ name }));
+
+  if (classRows.length > 0) {
+    const { error } = await supabase
+      .from("classes")
+      .upsert(classRows, {
+        onConflict: "name",
+      });
+
+    if (error) {
+      throw new Error(
+        `Gagal menyimpan kelas: ${error.message}`
+      );
+    }
   }
 }
