@@ -391,25 +391,97 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
         32
       );
 
-      const tableColumn = ['Tanggal', 'Jenis', 'Jam Realisasi', 'Nama Siswa', 'Kelas', 'Durasi (mnt)', 'Kategori', 'Alasan'];
-      const tableRows = sortedRecordsForExport.map((r) => [
-        new Date(r.id).toLocaleDateString('id-ID'),
-        r.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan',
-        r.arrivalTime,
-        r.name,
-        r.className,
-        `${r.durationMinutes} mnt`,
-        r.category,
-        r.reason || '-',
-      ]);
+      const tableColumn = [
+  'Tanggal',
+  'Jam Realisasi',
+  'Nama Siswa',
+  'Kelas',
+  'Durasi (mnt)',
+  'Kategori',
+  'Alasan',
+];
 
-      autoTable(doc, {
-        head: [tableColumn],
-        body: tableRows,
-        startY: 38,
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [14, 116, 144] },
-      });
+const buatBarisBulanan = (
+  records: TardinessRecord[]
+) =>
+  records.map((record) => [
+    new Date(record.id).toLocaleDateString('id-ID'),
+    record.arrivalTime,
+    record.name,
+    record.className,
+    `${record.durationMinutes} mnt`,
+    record.category,
+    record.reason || '-',
+  ]);
+
+const kedatanganBulanan =
+  sortedRecordsForExport.filter(
+    (record) =>
+      record.tardinessType !== 'kepulangan'
+  );
+
+const kepulanganBulanan =
+  sortedRecordsForExport.filter(
+    (record) =>
+      record.tardinessType === 'kepulangan'
+  );
+
+let posisiY = 38;
+
+doc.setTextColor(0);
+
+if (kedatanganBulanan.length > 0) {
+  doc.setFontSize(11);
+  doc.text(
+    'A. Keterlambatan Kedatangan',
+    14,
+    posisiY
+  );
+
+  autoTable(doc, {
+    head: [tableColumn],
+    body: buatBarisBulanan(kedatanganBulanan),
+    startY: posisiY + 4,
+    styles: {
+      fontSize: 8,
+    },
+    headStyles: {
+      fillColor: [14, 116, 144],
+    },
+  });
+
+  posisiY =
+    ((doc as any).lastAutoTable?.finalY ??
+      posisiY + 4) + 10;
+}
+
+if (kepulanganBulanan.length > 0) {
+  if (posisiY > 260) {
+    doc.addPage();
+    posisiY = 18;
+  }
+
+  doc.setFontSize(11);
+  doc.setTextColor(0);
+
+  doc.text(
+    'B. Keterlambatan Penjemputan/Kepulangan',
+    14,
+    posisiY
+  );
+
+  autoTable(doc, {
+    head: [tableColumn],
+    body: buatBarisBulanan(kepulanganBulanan),
+    startY: posisiY + 4,
+    styles: {
+      fontSize: 8,
+    },
+    headStyles: {
+      fillColor: [14, 116, 144],
+    },
+  });
+}
 
       doc.save(`${reportFileName}.pdf`);
     } catch (err) {
@@ -470,45 +542,101 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
       32
     );
 
-    const tableColumns = [
-      'Jenis',
-      'Jam Realisasi',
-      'Jam Standar',
-      'Nama Siswa',
-      'Kelas',
-      'Durasi',
-      'Kategori',
-      'Alasan',
-    ];
+  const tableColumns = [
+  'Jam Realisasi',
+  'Jam Standar',
+  'Nama Siswa',
+  'Kelas',
+  'Durasi',
+  'Kategori',
+  'Alasan',
+];
 
-    const tableRows = dailyRecordsForExport.map((record) => [
+const buatBarisHarian = (
+  records: TardinessRecord[]
+) =>
+  records.map((record) => [
+    record.arrivalTime,
+    record.schoolStartTime ||
+      (record.tardinessType === 'kepulangan'
+        ? '14:00'
+        : '07:30'),
+    record.name,
+    record.className,
+    `${record.durationMinutes} mnt`,
+    record.category,
+    record.reason || '-',
+  ]);
+
+const kedatanganHarian =
+  dailyRecordsForExport.filter(
+    (record) =>
+      record.tardinessType !== 'kepulangan'
+  );
+
+const kepulanganHarian =
+  dailyRecordsForExport.filter(
+    (record) =>
       record.tardinessType === 'kepulangan'
-        ? 'Kepulangan'
-        : 'Kedatangan',
-      record.arrivalTime,
-      record.schoolStartTime ||
-        (record.tardinessType === 'kepulangan'
-          ? '14:00'
-          : '07:30'),
-      record.name,
-      record.className,
-      `${record.durationMinutes} mnt`,
-      record.category,
-      record.reason || '-',
-    ]);
+  );
 
-    autoTable(doc, {
-      head: [tableColumns],
-      body: tableRows,
-      startY: 38,
-      styles: {
-        fontSize: 8,
-      },
-      headStyles: {
-        fillColor: [14, 116, 144],
-      },
-    });
+let posisiY = 38;
 
+doc.setTextColor(0);
+
+if (kedatanganHarian.length > 0) {
+  doc.setFontSize(11);
+
+  doc.text(
+    'A. Keterlambatan Kedatangan',
+    14,
+    posisiY
+  );
+
+  autoTable(doc, {
+    head: [tableColumns],
+    body: buatBarisHarian(kedatanganHarian),
+    startY: posisiY + 4,
+    styles: {
+      fontSize: 8,
+    },
+    headStyles: {
+      fillColor: [14, 116, 144],
+    },
+  });
+
+  posisiY =
+    ((doc as any).lastAutoTable?.finalY ??
+      posisiY + 4) + 10;
+}
+
+if (kepulanganHarian.length > 0) {
+  if (posisiY > 175) {
+    doc.addPage();
+    posisiY = 18;
+  }
+
+  doc.setFontSize(11);
+  doc.setTextColor(0);
+
+  doc.text(
+    'B. Keterlambatan Penjemputan/Kepulangan',
+    14,
+    posisiY
+  );
+
+  autoTable(doc, {
+    head: [tableColumns],
+    body: buatBarisHarian(kepulanganHarian),
+    startY: posisiY + 4,
+    styles: {
+      fontSize: 8,
+    },
+    headStyles: {
+      fillColor: [14, 116, 144],
+    },
+  });
+}
     doc.save(
       `rekap_keterlambatan_harian_${selectedDailyDate}.pdf`
     );
