@@ -325,6 +325,7 @@ useEffect(() => {
   };
 }, []);
   const [records, setRecords] = useState<TardinessRecord[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Persistence for Student Database
   const [studentDatabase, setStudentDatabase] =
@@ -336,6 +337,7 @@ useEffect(() => {
 
   const [isReportLoading, setIsReportLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [lastSubmittedRecord, setLastSubmittedRecord] = useState<TardinessRecord | null>(null);
   const [lastSubmittedMonthlyCount, setLastSubmittedMonthlyCount] = useState<number>(0);
@@ -378,6 +380,26 @@ useEffect(() => {
   const toggleTheme = () => {
     setTheme((prevTheme) => (prevTheme === 'dark' ? 'light' : 'dark'));
   };
+  const refreshLaporanBulanan = useCallback(async () => {
+  if (!session) return;
+
+  setIsRefreshing(true);
+
+  try {
+    const dataTerbaru = await ambilSemuaData();
+
+    setRecords(dataTerbaru);
+    setError(null);
+  } catch (error) {
+    setError(
+      error instanceof Error
+        ? error.message
+        : 'Gagal memperbarui laporan.'
+    );
+  } finally {
+    setIsRefreshing(false);
+  }
+}, [session]);
 
  useEffect(() => {
   if (!session) {
@@ -927,7 +949,9 @@ if (!session) {
           )}
 
           {activeTab === 'monthly' && (
-            <MonthlyReport allRecords={records} onDeleteRecord={handleDeleteRecord} />
+            <MonthlyReport allRecords={records} onDeleteRecord={handleDeleteRecord} 
+              onRefresh={refreshLaporanBulanan}
+isRefreshing={isRefreshing}/>
           )}
 
           {activeTab === 'database' && (
