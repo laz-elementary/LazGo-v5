@@ -212,44 +212,50 @@ export async function simpanDatabaseSiswa(
   }
 }
 
-useEffect(() => {
-  if (!session) {
-    setStudentDatabase([]);
-    setClassDatabase([]);
-    return;
+export async function ambilDatabaseSiswa(): Promise<{
+  students: StudentInfo[];
+  classNames: string[];
+}> {
+  const {
+    data: studentRows,
+    error: studentError,
+  } = await supabase
+    .from("students")
+    .select("name, class_name")
+    .order("class_name", { ascending: true })
+    .order("name", { ascending: true });
+
+  if (studentError) {
+    throw new Error(
+      `Gagal mengambil database siswa: ${studentError.message}`
+    );
   }
 
-  let masihAktif = true;
+  const {
+    data: classRows,
+    error: classError,
+  } = await supabase
+    .from("classes")
+    .select("name")
+    .order("name", { ascending: true });
 
-  async function muatDatabaseSiswa() {
-    try {
-      const hasil = await ambilDatabaseSiswa();
-
-      if (masihAktif) {
-        setStudentDatabase(hasil.students);
-        setClassDatabase(hasil.classNames);
-      }
-    } catch (error) {
-      if (masihAktif) {
-        setError(
-          error instanceof Error
-            ? error.message
-            : 'Gagal mengambil database siswa.'
-        );
-      }
-    }
+  if (classError) {
+    throw new Error(
+      `Gagal mengambil database kelas: ${classError.message}`
+    );
   }
 
-  muatDatabaseSiswa();
+  const students: StudentInfo[] =
+    (studentRows ?? []).map((student) => ({
+      name: student.name,
+      className: student.class_name,
+    }));
 
-  // Memeriksa pembaruan setiap 15 detik
-  const interval = window.setInterval(
-    muatDatabaseSiswa,
-    15000
-  );
+  const classNames =
+    (classRows ?? []).map((kelas) => kelas.name);
 
-  return () => {
-    masihAktif = false;
-    window.clearInterval(interval);
+  return {
+    students,
+    classNames,
   };
-}, [session]);
+}
