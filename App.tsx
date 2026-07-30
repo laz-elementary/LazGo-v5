@@ -326,24 +326,14 @@ useEffect(() => {
   const [records, setRecords] = useState<TardinessRecord[]>([]);
 
   // Persistence for Student Database
-  const [studentDatabase, setStudentDatabase] = useState<StudentInfo[]>(() => {
-    try {
-      const saved = localStorage.getItem('studentDatabase');
-      return saved ? JSON.parse(saved) : defaultStudents;
-    } catch (error) {
-      console.error('Could not parse student database from localStorage', error);
-      return defaultStudents;
+  const [studentDatabase, setStudentDatabase] =
+  useState<StudentInfo[]>([]);
     }
   });
 
   // Persistence for Class Database
-  const [classDatabase, setClassDatabase] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('classDatabase');
-      return saved ? JSON.parse(saved) : defaultClassNames;
-    } catch (error) {
-      console.error('Could not parse class database from localStorage', error);
-      return defaultClassNames;
+  const [classDatabase, setClassDatabase] =
+  useState<string[]>([]);
     }
   });
 
@@ -431,13 +421,46 @@ useEffect(() => {
   };
 }, [session]);
 
-  useEffect(() => {
-    localStorage.setItem('studentDatabase', JSON.stringify(studentDatabase));
-  }, [studentDatabase]);
+useEffect(() => {
+  if (!session) {
+    setStudentDatabase([]);
+    setClassDatabase([]);
+    return;
+  }
 
-  useEffect(() => {
-    localStorage.setItem('classDatabase', JSON.stringify(classDatabase));
-  }, [classDatabase]);
+  let masihAktif = true;
+
+  async function muatDatabaseSiswa() {
+    try {
+      const hasil = await ambilDatabaseSiswa();
+
+      if (masihAktif) {
+        setStudentDatabase(hasil.students);
+        setClassDatabase(hasil.classNames);
+      }
+    } catch (error) {
+      if (masihAktif) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : 'Gagal mengambil database siswa.'
+        );
+      }
+    }
+  }
+
+  muatDatabaseSiswa();
+
+  const intervalSiswa = window.setInterval(
+    muatDatabaseSiswa,
+    15000
+  );
+
+  return () => {
+    masihAktif = false;
+    window.clearInterval(intervalSiswa);
+  };
+}, [session]);
 
   useEffect(() => {
     if (output) {
