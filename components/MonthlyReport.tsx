@@ -89,11 +89,6 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDele
     }
   }, [availableYears, selectedYear]);
 
-  useEffect(() => {
-    if (availableMonths.length > 0 && !availableMonths.includes(selectedMonth)) {
-      setSelectedMonth(availableMonths[availableMonths.length - 1]);
-    }
-  }, [availableMonths, selectedMonth]);
 
   const reportFileName = `rekap_keterlambatan_${monthNames[selectedMonth]}_${selectedYear}`;
 
