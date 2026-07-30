@@ -23,9 +23,16 @@ import { PdfIcon, ExcelIcon, ExportIcon, SearchIcon, TagIcon, DownloadIcon } fro
 interface MonthlyReportProps {
   allRecords: TardinessRecord[];
   onDeleteRecord?: (id: string) => void;
+  onRefresh?: () => Promise<void>;
+isRefreshing?: boolean;
 }
 
-export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDeleteRecord }) => {
+export const MonthlyReport: React.FC<MonthlyReportProps> = ({
+  allRecords,
+  onDeleteRecord,
+  onRefresh,
+  isRefreshing = false,
+}) => {
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedDailyDate, setSelectedDailyDate] = useState(() => {
@@ -528,6 +535,20 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDele
 
           {/* Export Action Buttons */}
           <div className="flex flex-wrap items-center gap-2">
+            {onRefresh && (
+  <button
+    type="button"
+    onClick={() => void onRefresh()}
+    disabled={isRefreshing}
+    className="flex items-center gap-1.5 rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+  >
+    <span className={isRefreshing ? 'animate-spin' : ''}>
+      ↻
+    </span>
+
+    {isRefreshing ? 'Memperbarui...' : 'Refresh Data'}
+  </button>
+)}
             <button
               onClick={handleExportPDF}
               disabled={filteredRecordsForMonth.length === 0}
