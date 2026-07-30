@@ -211,3 +211,45 @@ export async function simpanDatabaseSiswa(
     }
   }
 }
+
+useEffect(() => {
+  if (!session) {
+    setStudentDatabase([]);
+    setClassDatabase([]);
+    return;
+  }
+
+  let masihAktif = true;
+
+  async function muatDatabaseSiswa() {
+    try {
+      const hasil = await ambilDatabaseSiswa();
+
+      if (masihAktif) {
+        setStudentDatabase(hasil.students);
+        setClassDatabase(hasil.classNames);
+      }
+    } catch (error) {
+      if (masihAktif) {
+        setError(
+          error instanceof Error
+            ? error.message
+            : 'Gagal mengambil database siswa.'
+        );
+      }
+    }
+  }
+
+  muatDatabaseSiswa();
+
+  // Memeriksa pembaruan setiap 15 detik
+  const interval = window.setInterval(
+    muatDatabaseSiswa,
+    15000
+  );
+
+  return () => {
+    masihAktif = false;
+    window.clearInterval(interval);
+  };
+}, [session]);
