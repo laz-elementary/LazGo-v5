@@ -100,6 +100,47 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDele
     });
   }, [allRecords, selectedMonth, selectedYear]);
 
+  const sortedRecordsForExport = useMemo(() => {
+  return [...filteredRecordsForMonth].sort((a, b) => {
+    const classComparison = (a.className || '').localeCompare(
+      b.className || '',
+      'id',
+      {
+        numeric: true,
+        sensitivity: 'base',
+      }
+    );
+
+    if (classComparison !== 0) {
+      return classComparison;
+    }
+
+    const nameComparison = (a.name || '').localeCompare(
+      b.name || '',
+      'id',
+      {
+        sensitivity: 'base',
+      }
+    );
+
+    if (nameComparison !== 0) {
+      return nameComparison;
+    }
+
+    const dateComparison =
+      new Date(a.id).getTime() -
+      new Date(b.id).getTime();
+
+    if (dateComparison !== 0) {
+      return dateComparison;
+    }
+
+    return (a.arrivalTime || '').localeCompare(
+      b.arrivalTime || ''
+    );
+  });
+}, [filteredRecordsForMonth]);
+
   // Additional detail view table filtering (search, class, category, type, sorting)
   const detailedRecords = useMemo(() => {
     let result = filteredRecordsForMonth.filter((rec) => {
@@ -214,7 +255,7 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDele
     const headers = ['ID', 'Tanggal', 'Jenis', 'Jam Datang/Jemput', 'Jam Standar', 'Nama Siswa', 'Kelas', 'Durasi Terlambat (mnt)', 'Kategori', 'Alasan'];
     const csvContent = [
       headers.join(','),
-      ...filteredRecordsForMonth.map((r) =>
+     ...sortedRecordsForExport.map((r) =>
         [
           `"${r.id}"`,
           `"${new Date(r.id).toLocaleDateString('id-ID')}"`,
@@ -245,7 +286,7 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDele
       alert('Tidak ada data untuk diekspor pada bulan ini.');
       return;
     }
-    const dataToExport = filteredRecordsForMonth.map((r) => ({
+    const dataToExport = sortedRecordsForExport.map((r) => ({
       Tanggal: new Date(r.id).toLocaleDateString('id-ID'),
       Jenis: r.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan',
       'Jam Realisasi': r.arrivalTime,
@@ -287,7 +328,7 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({ allRecords, onDele
       );
 
       const tableColumn = ['Tanggal', 'Jenis', 'Jam Realisasi', 'Nama Siswa', 'Kelas', 'Durasi (mnt)', 'Kategori', 'Alasan'];
-      const tableRows = filteredRecordsForMonth.map((r) => [
+      const tableRows = sortedRecordsForExport.map((r) => [
         new Date(r.id).toLocaleDateString('id-ID'),
         r.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan',
         r.arrivalTime,
