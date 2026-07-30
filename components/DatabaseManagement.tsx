@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { StudentInfo } from '../data/students';
 import { DatabaseIcon, UploadIcon, PlusIcon, TrashIcon, EditIcon, DownloadIcon, UsersIcon, SearchIcon, ClassIcon, CheckIcon } from './icons';
+import { simpanDatabaseSiswa } from '../services/database';
 
 interface DatabaseManagementProps {
   students: StudentInfo[];
@@ -326,7 +327,7 @@ export const DatabaseManagement: React.FC<DatabaseManagementProps> = ({
     setImportFileName('Teks Tempelan (Paste)');
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (previewData.length === 0) return;
 
     let finalStudents: StudentInfo[];
@@ -346,8 +347,24 @@ export const DatabaseManagement: React.FC<DatabaseManagementProps> = ({
       )
     ).sort();
 
-    onUpdateStudents(finalStudents);
-    onUpdateClasses(allImportedClasses);
+    try {
+  await simpanDatabaseSiswa(
+    finalStudents,
+    allImportedClasses,
+    importMode
+  );
+
+  onUpdateStudents(finalStudents);
+  onUpdateClasses(allImportedClasses);
+} catch (error) {
+  showError(
+    error instanceof Error
+      ? error.message
+      : 'Gagal menyimpan database siswa ke Supabase.'
+  );
+
+  return;
+}
 
     showNotification(`Berhasil menyimpan ${previewData.length} data siswa ke database!`);
     setPreviewData([]);
