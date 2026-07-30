@@ -11,6 +11,7 @@ import {
   ambilSemuaData,
   simpanData,
   hapusData,
+  ambilDatabaseSiswa,
 } from './services/database';
 import {
   LogoIcon,
@@ -328,14 +329,10 @@ useEffect(() => {
   // Persistence for Student Database
   const [studentDatabase, setStudentDatabase] =
   useState<StudentInfo[]>([]);
-    }
-  });
 
   // Persistence for Class Database
   const [classDatabase, setClassDatabase] =
   useState<string[]>([]);
-    }
-  });
 
   const [isReportLoading, setIsReportLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
