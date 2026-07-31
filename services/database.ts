@@ -259,3 +259,77 @@ export async function ambilDatabaseSiswa(): Promise<{
     classNames,
   };
 }
+
+export async function tambahSiswaManual(
+  student: StudentInfo
+): Promise<void> {
+  const name = student.name.trim();
+  const className = student.className.trim();
+
+  const { error: classError } = await supabase
+    .from("classes")
+    .upsert(
+      { name: className },
+      { onConflict: "name" }
+    );
+
+  if (classError) {
+    throw new Error(
+      `Gagal menyimpan kelas: ${classError.message}`
+    );
+  }
+
+  const { error: studentError } = await supabase
+    .from("students")
+    .upsert(
+      {
+        name,
+        class_name: className,
+      },
+      {
+        onConflict: "name,class_name",
+      }
+    );
+
+  if (studentError) {
+    throw new Error(
+      `Gagal menyimpan siswa: ${studentError.message}`
+    );
+  }
+}
+
+export async function ubahSiswaManual(
+  studentLama: StudentInfo,
+  studentBaru: StudentInfo
+): Promise<void> {
+  const newName = studentBaru.name.trim();
+  const newClassName = studentBaru.className.trim();
+
+  const { error: classError } = await supabase
+    .from("classes")
+    .upsert(
+      { name: newClassName },
+      { onConflict: "name" }
+    );
+
+  if (classError) {
+    throw new Error(
+      `Gagal menyimpan kelas: ${classError.message}`
+    );
+  }
+
+  const { error: studentError } = await supabase
+    .from("students")
+    .update({
+      name: newName,
+      class_name: newClassName,
+    })
+    .eq("name", studentLama.name)
+    .eq("class_name", studentLama.className);
+
+  if (studentError) {
+    throw new Error(
+      `Gagal memperbarui siswa: ${studentError.message}`
+    );
+  }
+}
