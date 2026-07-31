@@ -76,12 +76,25 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, studentsList, cl
   };
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setName(value);
-    if (value.length > 0) {
-      const filtered = studentsList
-        .filter((s) => s.name.toLowerCase().includes(value.toLowerCase()))
-        .slice(0, 6);
+    const searchWords = value
+  .trim()
+  .toLowerCase()
+  .split(/\s+/)
+  .filter(Boolean);
+
+const filtered = studentsList
+  .filter((student) => {
+    const studentName = student.name.toLowerCase();
+
+    return searchWords.every((word) =>
+      studentName.includes(word)
+    );
+  })
+  .sort((a, b) =>
+    a.name.localeCompare(b.name, 'id', {
+      sensitivity: 'base',
+    })
+  );
       setNameSuggestions(filtered);
       setShowNameSuggestions(true);
     } else {
