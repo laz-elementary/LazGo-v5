@@ -1,4 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+} from 'react';
 import { StudentData, TardinessRecord, TardinessType } from '../types';
 import { StudentInfo } from '../data/students';
 
@@ -25,6 +29,10 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, studentsList, cl
   const [name, setName] = useState('');
   const [className, setClassName] = useState('');
   const [arrivalTime, setArrivalTime] = useState(getCurrentTime);
+  const [
+  timeEditedManually,
+  setTimeEditedManually,
+] = useState(false);
   const [selectedReason, setSelectedReason] = useState('Lain-lain (Tulis Sendiri)');
   const [customReason, setCustomReason] = useState('');
 
@@ -37,6 +45,27 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, studentsList, cl
   const [autoSaveNewStudent, setAutoSaveNewStudent] = useState(true);
   const [formError, setFormError] = useState<string | null>(null);
 
+  useEffect(() => {
+  // Berhenti memperbarui otomatis jika jam diedit manual
+  if (timeEditedManually) return;
+
+  const updateCurrentTime = () => {
+    setArrivalTime(getCurrentTime());
+  };
+
+  // Langsung sesuaikan saat formulir dibuka
+  updateCurrentTime();
+
+  // Periksa waktu terbaru setiap 10 detik
+  const intervalId = window.setInterval(
+    updateCurrentTime,
+    10000
+  );
+
+  return () => {
+    window.clearInterval(intervalId);
+  };
+}, [timeEditedManually]);
   const handleTardinessTypeChange = (type: TardinessType) => {
     setTardinessType(type);
     if (type === 'kedatangan') {
@@ -310,13 +339,16 @@ export const InputForm: React.FC<InputFormProps> = ({ onSubmit, studentsList, cl
             {tardinessType === 'kedatangan' ? 'Jam Datang Siswa' : 'Jam Penjemputan / Pulang'}
           </label>
           <input
-            type="time"
-            id="arrivalTime"
-            value={arrivalTime}
-            onChange={(e) => setArrivalTime(e.target.value)}
-            required
-            className="block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 sm:text-sm text-gray-900 dark:text-white font-bold"
-          />
+  type="time"
+  id="arrivalTime"
+  value={arrivalTime}
+  onChange={(e) => {
+    setArrivalTime(e.target.value);
+    setTimeEditedManually(true);
+  }}
+  required
+  className="block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 sm:text-sm text-gray-900 dark:text-white font-bold"
+/>
         </div>
       </div>
 
