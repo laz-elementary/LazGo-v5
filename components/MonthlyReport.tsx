@@ -1092,9 +1092,13 @@ if (kepulanganHarian.length > 0) {
         </div>
 
         {/* Detailed Table */}
-        <div className="overflow-x-auto border border-gray-200 dark:border-gray-700 rounded-lg">
+        <div className="mb-2 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+  <span className="text-base">↕</span>
+  <span>Scroll ke bawah untuk melihat catatan lainnya</span>
+</div>
+        <div className="max-h-[520px] overflow-y-auto overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
           <table className="w-full text-left text-sm text-gray-700 dark:text-gray-300">
-            <thead className="text-xs uppercase bg-gray-100 dark:bg-gray-700/80 text-gray-600 dark:text-gray-300">
+            <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-700">
               <tr>
                 <th className="py-3 px-4">Tanggal</th>
                 <th className="py-3 px-4">Jenis</th>
