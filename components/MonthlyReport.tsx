@@ -209,46 +209,78 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
 
   // Additional detail view table filtering (search, class, category, type, sorting)
   const detailedRecords = useMemo(() => {
-    let result = filteredRecordsForMonth.filter((rec) => {
-      const recordDate = new Date(rec.id);
+  const result = filteredRecordsForMonth.filter((rec) => {
+    const recordDate = new Date(rec.id);
 
-const recordDateKey = [
-  recordDate.getFullYear(),
-  String(recordDate.getMonth() + 1).padStart(2, '0'),
-  String(recordDate.getDate()).padStart(2, '0'),
-].join('-');
+    const recordDateKey = [
+      recordDate.getFullYear(),
+      String(recordDate.getMonth() + 1).padStart(2, '0'),
+      String(recordDate.getDate()).padStart(2, '0'),
+    ].join('-');
 
-const matchesDate = recordDateFilter
-  ? recordDateKey === recordDateFilter
-  : true;
-      const matchesSearch =
-        rec.name.toLowerCase().includes(recordSearch.toLowerCase()) ||
-        (rec.reason && rec.reason.toLowerCase().includes(recordSearch.toLowerCase()));
-      const matchesClass = classFilter ? rec.className === classFilter : true;
-      const matchesCategory = categoryFilter ? rec.category === categoryFilter : true;
-      const matchesType =
-        typeFilter === 'all'
-          ? true
-          : typeFilter === 'kepulangan'
+    const matchesDate = recordDateFilter
+      ? recordDateKey === recordDateFilter
+      : true;
+
+    const matchesSearch =
+      rec.name
+        .toLowerCase()
+        .includes(recordSearch.toLowerCase()) ||
+      Boolean(
+        rec.reason &&
+          rec.reason
+            .toLowerCase()
+            .includes(recordSearch.toLowerCase())
+      );
+
+    const matchesClass = classFilter
+      ? rec.className === classFilter
+      : true;
+
+    const matchesCategory = categoryFilter
+      ? rec.category === categoryFilter
+      : true;
+
+    const matchesType =
+      typeFilter === 'all'
+        ? true
+        : typeFilter === 'kepulangan'
           ? rec.tardinessType === 'kepulangan'
           : rec.tardinessType !== 'kepulangan';
 
+    return (
+      matchesSearch &&
+      matchesDate &&
+      matchesClass &&
+      matchesCategory &&
+      matchesType
+    );
+  });
+
+  result.sort((a, b) => {
+    if (sortBy === 'date-desc') {
       return (
-  matchesSearch &&
-  matchesDate &&
-  matchesClass &&
-  matchesCategory &&
-  matchesType
-);
+        new Date(b.id).getTime() -
+        new Date(a.id).getTime()
+      );
+    }
 
-    result.sort((a, b) => {
-      if (sortBy === 'date-desc') return new Date(b.id).getTime() - new Date(a.id).getTime();
-      if (sortBy === 'date-asc') return new Date(a.id).getTime() - new Date(b.id).getTime();
-      if (sortBy === 'duration-desc') return b.durationMinutes - a.durationMinutes;
-      return 0;
-    });
+    if (sortBy === 'date-asc') {
+      return (
+        new Date(a.id).getTime() -
+        new Date(b.id).getTime()
+      );
+    }
 
-    }, [
+    if (sortBy === 'duration-desc') {
+      return b.durationMinutes - a.durationMinutes;
+    }
+
+    return 0;
+  });
+
+  return result;
+}, [
   filteredRecordsForMonth,
   recordSearch,
   recordDateFilter,
