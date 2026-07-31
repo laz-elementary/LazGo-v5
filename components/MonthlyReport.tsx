@@ -209,6 +209,42 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
     });
 }, [allRecords, selectedDailyDate]);
 
+  const dailyArrivalRecords = useMemo(
+    () => dailyRecordsForExport.filter((record) => record.tardinessType !== 'kepulangan'),
+    [dailyRecordsForExport]
+  );
+
+  const dailyPickupRecords = useMemo(
+    () => dailyRecordsForExport.filter((record) => record.tardinessType === 'kepulangan'),
+    [dailyRecordsForExport]
+  );
+
+  const dailyStats = useMemo(() => {
+    const totalMinutes = dailyRecordsForExport.reduce(
+      (total, record) => total + record.durationMinutes,
+      0
+    );
+
+    return {
+      totalCount: dailyRecordsForExport.length,
+      uniqueStudents: new Set(dailyRecordsForExport.map((record) => record.name)).size,
+      arrivalCount: dailyArrivalRecords.length,
+      pickupCount: dailyPickupRecords.length,
+      totalMinutes,
+    };
+  }, [dailyRecordsForExport, dailyArrivalRecords, dailyPickupRecords]);
+
+  const selectedDailyDateLabel = useMemo(
+    () =>
+      new Date(`${selectedDailyDate}T00:00:00`).toLocaleDateString('id-ID', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }),
+    [selectedDailyDate]
+  );
+
   // Additional detail view table filtering (search, class, category, type, sorting)
   const detailedRecords = useMemo(() => {
   const result = filteredRecordsForMonth.filter((rec) => {
@@ -736,80 +772,207 @@ if (kepulanganHarian.length > 0) {
   </div>
 </div>
       {reportMode === 'daily' && (
-  <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-md dark:border-gray-700 dark:bg-gray-800">
-    <div className="mb-5 flex flex-col gap-3 border-b pb-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-          Rekap Laporan Harian
-        </h2>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-md dark:border-gray-700 dark:bg-gray-800">
+            <div className="mb-5 flex flex-col gap-3 border-b pb-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+                  Rekap Laporan Harian
+                </h2>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {selectedDailyDateLabel}
+                </p>
+              </div>
 
-        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-          Pilih tanggal untuk melihat dan mengunduh rekap harian.
-        </p>
-      </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {onRefresh && (
+                  <button
+                    type="button"
+                    onClick={() => void onRefresh()}
+                    disabled={isRefreshing}
+                    className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isRefreshing ? 'Memperbarui...' : '↻ Refresh Data'}
+                  </button>
+                )}
 
-      {onRefresh && (
-        <button
-          type="button"
-          onClick={() => void onRefresh()}
-          disabled={isRefreshing}
-          className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
-        >
-          {isRefreshing
-            ? 'Memperbarui...'
-            : '↻ Refresh Data'}
-        </button>
+                <button
+                  type="button"
+                  onClick={handleExportDailyPDF}
+                  disabled={dailyRecordsForExport.length === 0}
+                  className="flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <PdfIcon className="h-4 w-4" />
+                  Unduh PDF Harian
+                </button>
+              </div>
+            </div>
+
+            <div className="mb-5 max-w-sm">
+              <label
+                htmlFor="daily-date"
+                className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400"
+              >
+                Pilih Tanggal
+              </label>
+              <input
+                id="daily-date"
+                type="date"
+                value={selectedDailyDate}
+                onChange={(event) => setSelectedDailyDate(event.target.value)}
+                className="block w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+              <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700">
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">Total Catatan</p>
+                <p className="mt-1 text-xl font-bold text-sky-600 dark:text-sky-400">{dailyStats.totalCount}</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700">
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">Siswa Berbeda</p>
+                <p className="mt-1 text-xl font-bold text-indigo-600 dark:text-indigo-400">{dailyStats.uniqueStudents}</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700">
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">Kedatangan</p>
+                <p className="mt-1 text-xl font-bold text-sky-600 dark:text-sky-400">{dailyStats.arrivalCount}</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700">
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">Kepulangan</p>
+                <p className="mt-1 text-xl font-bold text-amber-600 dark:text-amber-400">{dailyStats.pickupCount}</p>
+              </div>
+              <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-700">
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">Total Durasi</p>
+                <p className="mt-1 text-xl font-bold text-teal-600 dark:text-teal-400">{dailyStats.totalMinutes} mnt</p>
+              </div>
+            </div>
+          </div>
+
+          {dailyRecordsForExport.length === 0 ? (
+            <div className="rounded-xl border border-gray-100 bg-white p-8 text-center text-sm text-gray-500 shadow-md dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400">
+              Belum ada data pada tanggal yang dipilih.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+              <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-md dark:border-gray-700 dark:bg-gray-800">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-gray-900 dark:text-white">A. Keterlambatan Kedatangan</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{dailyArrivalRecords.length} catatan</p>
+                  </div>
+                </div>
+
+                <div className="max-h-[420px] overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  <table className="w-full min-w-[760px] text-left text-xs text-gray-700 dark:text-gray-300">
+                    <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-700">
+                      <tr>
+                        <th className="px-3 py-2">Jam Datang</th>
+                        <th className="px-3 py-2">Jam Standar</th>
+                        <th className="px-3 py-2">Nama Siswa</th>
+                        <th className="px-3 py-2">Kelas</th>
+                        <th className="px-3 py-2">Durasi</th>
+                        <th className="px-3 py-2">Kategori</th>
+                        <th className="px-3 py-2">Alasan</th>
+                        {onDeleteRecord && <th className="px-3 py-2 text-center">Aksi</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {dailyArrivalRecords.length === 0 ? (
+                        <tr>
+                          <td colSpan={onDeleteRecord ? 8 : 7} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400">
+                            Tidak ada keterlambatan kedatangan.
+                          </td>
+                        </tr>
+                      ) : (
+                        dailyArrivalRecords.map((record) => (
+                          <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <td className="whitespace-nowrap px-3 py-2 font-bold text-sky-600 dark:text-sky-400">{record.arrivalTime}</td>
+                            <td className="whitespace-nowrap px-3 py-2">{record.schoolStartTime || '07:30'}</td>
+                            <td className="px-3 py-2 font-semibold text-gray-900 dark:text-white">{record.name}</td>
+                            <td className="whitespace-nowrap px-3 py-2">{record.className}</td>
+                            <td className="whitespace-nowrap px-3 py-2 font-semibold text-amber-600 dark:text-amber-400">{record.durationMinutes} mnt</td>
+                            <td className="whitespace-nowrap px-3 py-2">{record.category}</td>
+                            <td className="px-3 py-2">{record.reason || '-'}</td>
+                            {onDeleteRecord && (
+                              <td className="whitespace-nowrap px-3 py-2 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteConfirmRecord({ id: record.id, name: record.name })}
+                                  className="font-medium text-rose-600 underline hover:text-rose-800 dark:text-rose-400"
+                                >
+                                  Hapus
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 bg-white p-5 shadow-md dark:border-gray-700 dark:bg-gray-800">
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-bold text-gray-900 dark:text-white">B. Keterlambatan Penjemputan/Kepulangan</h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{dailyPickupRecords.length} catatan</p>
+                  </div>
+                </div>
+
+                <div className="max-h-[420px] overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  <table className="w-full min-w-[760px] text-left text-xs text-gray-700 dark:text-gray-300">
+                    <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-700">
+                      <tr>
+                        <th className="px-3 py-2">Jam Dijemput</th>
+                        <th className="px-3 py-2">Jam Standar</th>
+                        <th className="px-3 py-2">Nama Siswa</th>
+                        <th className="px-3 py-2">Kelas</th>
+                        <th className="px-3 py-2">Durasi</th>
+                        <th className="px-3 py-2">Kategori</th>
+                        <th className="px-3 py-2">Alasan</th>
+                        {onDeleteRecord && <th className="px-3 py-2 text-center">Aksi</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {dailyPickupRecords.length === 0 ? (
+                        <tr>
+                          <td colSpan={onDeleteRecord ? 8 : 7} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400">
+                            Tidak ada keterlambatan penjemputan/kepulangan.
+                          </td>
+                        </tr>
+                      ) : (
+                        dailyPickupRecords.map((record) => (
+                          <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                            <td className="whitespace-nowrap px-3 py-2 font-bold text-amber-600 dark:text-amber-400">{record.arrivalTime}</td>
+                            <td className="whitespace-nowrap px-3 py-2">{record.schoolStartTime || '14:00'}</td>
+                            <td className="px-3 py-2 font-semibold text-gray-900 dark:text-white">{record.name}</td>
+                            <td className="whitespace-nowrap px-3 py-2">{record.className}</td>
+                            <td className="whitespace-nowrap px-3 py-2 font-semibold text-amber-600 dark:text-amber-400">{record.durationMinutes} mnt</td>
+                            <td className="whitespace-nowrap px-3 py-2">{record.category}</td>
+                            <td className="px-3 py-2">{record.reason || '-'}</td>
+                            {onDeleteRecord && (
+                              <td className="whitespace-nowrap px-3 py-2 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => setDeleteConfirmRecord({ id: record.id, name: record.name })}
+                                  className="font-medium text-rose-600 underline hover:text-rose-800 dark:text-rose-400"
+                                >
+                                  Hapus
+                                </button>
+                              </td>
+                            )}
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       )}
-    </div>
-
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-end">
-      <div>
-        <label
-          htmlFor="daily-date"
-          className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400"
-        >
-          Pilih Tanggal
-        </label>
-
-        <input
-          id="daily-date"
-          type="date"
-          value={selectedDailyDate}
-          onChange={(event) =>
-            setSelectedDailyDate(event.target.value)
-          }
-          className="block w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-        />
-      </div>
-
-      <div className="rounded-lg bg-gray-50 px-4 py-2 dark:bg-gray-700">
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Total Catatan
-        </p>
-
-        <p className="text-xl font-bold text-sky-600 dark:text-sky-400">
-          {dailyRecordsForExport.length}
-        </p>
-      </div>
-
-      <button
-        type="button"
-        onClick={handleExportDailyPDF}
-        disabled={dailyRecordsForExport.length === 0}
-        className="flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        <PdfIcon className="h-4 w-4" />
-        Unduh PDF Harian
-      </button>
-    </div>
-
-    {dailyRecordsForExport.length === 0 && (
-      <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-        Belum ada data pada tanggal yang dipilih.
-      </p>
-    )}
-  </div>
-)}
       {/* Header & Filter Card */}
       <div
   className={
