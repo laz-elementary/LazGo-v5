@@ -44,6 +44,8 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
 
   return `${year}-${month}-${day}`;
 });
+  const [reportMode, setReportMode] =
+  useState<'daily' | 'monthly'>('daily');
 
   // Filter state for separate records breakdown table
   const [recordSearch, setRecordSearch] = useState('');
@@ -705,7 +707,117 @@ if (kepulanganHarian.length > 0) {
 
   return (
     <div className="space-y-6">
+      {/* Submenu Laporan */}
+<div className="flex justify-center">
+  <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+    <button
+      type="button"
+      onClick={() => setReportMode('daily')}
+      className={`rounded-lg px-5 py-2 text-sm font-semibold transition-colors ${
+        reportMode === 'daily'
+          ? 'bg-sky-600 text-white'
+          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+      }`}
+    >
+      Rekap Harian
+    </button>
+
+    <button
+      type="button"
+      onClick={() => setReportMode('monthly')}
+      className={`rounded-lg px-5 py-2 text-sm font-semibold transition-colors ${
+        reportMode === 'monthly'
+          ? 'bg-sky-600 text-white'
+          : 'text-gray-600 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700'
+      }`}
+    >
+      Rekap Bulanan
+    </button>
+  </div>
+</div>
+      {reportMode === 'daily' && (
+  <div className="rounded-xl border border-gray-100 bg-white p-6 shadow-md dark:border-gray-700 dark:bg-gray-800">
+    <div className="mb-5 flex flex-col gap-3 border-b pb-4 dark:border-gray-700 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
+          Rekap Laporan Harian
+        </h2>
+
+        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+          Pilih tanggal untuk melihat dan mengunduh rekap harian.
+        </p>
+      </div>
+
+      {onRefresh && (
+        <button
+          type="button"
+          onClick={() => void onRefresh()}
+          disabled={isRefreshing}
+          className="rounded-lg bg-sky-600 px-3 py-2 text-xs font-semibold text-white hover:bg-sky-700 disabled:opacity-50"
+        >
+          {isRefreshing
+            ? 'Memperbarui...'
+            : '↻ Refresh Data'}
+        </button>
+      )}
+    </div>
+
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-end">
+      <div>
+        <label
+          htmlFor="daily-date"
+          className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400"
+        >
+          Pilih Tanggal
+        </label>
+
+        <input
+          id="daily-date"
+          type="date"
+          value={selectedDailyDate}
+          onChange={(event) =>
+            setSelectedDailyDate(event.target.value)
+          }
+          className="block w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+        />
+      </div>
+
+      <div className="rounded-lg bg-gray-50 px-4 py-2 dark:bg-gray-700">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Total Catatan
+        </p>
+
+        <p className="text-xl font-bold text-sky-600 dark:text-sky-400">
+          {dailyRecordsForExport.length}
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={handleExportDailyPDF}
+        disabled={dailyRecordsForExport.length === 0}
+        className="flex items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <PdfIcon className="h-4 w-4" />
+        Unduh PDF Harian
+      </button>
+    </div>
+
+    {dailyRecordsForExport.length === 0 && (
+      <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+        Belum ada data pada tanggal yang dipilih.
+      </p>
+    )}
+  </div>
+)}
       {/* Header & Filter Card */}
+      <div
+  className={
+    reportMode === 'monthly'
+      ? 'space-y-6'
+      : 'hidden'
+  }
+>
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-100 dark:border-gray-700">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 pb-4 border-b dark:border-gray-700">
           <div>
@@ -802,45 +914,6 @@ if (kepulanganHarian.length > 0) {
   <p className="mb-3 text-sm font-bold text-gray-900 dark:text-white">
     Unduh Rekap Harian
   </p>
-
-  <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-    <div className="w-full sm:max-w-xs">
-      <label
-        htmlFor="daily-date"
-        className="mb-1 block text-xs font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400"
-      >
-        Pilih Tanggal
-      </label>
-
-      <input
-        id="daily-date"
-        type="date"
-        value={selectedDailyDate}
-        onChange={(event) =>
-          setSelectedDailyDate(event.target.value)
-        }
-        className="block w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-      />
-    </div>
-
-    <button
-      type="button"
-      onClick={handleExportDailyPDF}
-      disabled={dailyRecordsForExport.length === 0}
-      className="flex items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-700 disabled:cursor-not-allowed disabled:bg-violet-300 dark:disabled:bg-violet-900/40"
-    >
-      <PdfIcon className="h-4 w-4" />
-      Unduh PDF Harian
-    </button>
-  </div>
-
-  {dailyRecordsForExport.length === 0 && (
-    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-      Belum ada data keterlambatan pada tanggal yang dipilih.
-    </p>
-  )}
-</div>
-      </div>
 
       {/* Monthly Summary Statistics Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
