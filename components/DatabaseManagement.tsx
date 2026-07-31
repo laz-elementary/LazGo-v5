@@ -2,11 +2,7 @@ import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { StudentInfo } from '../data/students';
 import { DatabaseIcon, UploadIcon, PlusIcon, TrashIcon, EditIcon, DownloadIcon, UsersIcon, SearchIcon, ClassIcon, CheckIcon } from './icons';
-import {
-  simpanDatabaseSiswa,
-  tambahSiswaManual,
-  ubahSiswaManual,
-} from '../services/database';
+import { simpanDatabaseSiswa } from '../services/database';
 
 interface DatabaseManagementProps {
   students: StudentInfo[];
@@ -100,113 +96,79 @@ export const DatabaseManagement: React.FC<DatabaseManagementProps> = ({
 ) => {
   e.preventDefault();
 
-  if (
-    !studentNameInput.trim() ||
-    !studentClassInput.trim()
-  ) {
+  const trimmedName = studentNameInput.trim();
+  const trimmedClass = studentClassInput.trim();
+
+  if (!trimmedName || !trimmedClass) {
     showError('Nama Siswa dan Kelas harus diisi.');
     return;
   }
 
-  const trimmedName = studentNameInput.trim();
-  const trimmedClass = studentClassInput.trim();
-
-  const studentBaru: StudentInfo = {
-    name: trimmedName,
-    className: trimmedClass,
-  };
-
   const updatedClasses = classNames.includes(trimmedClass)
-    ? classNames
+    ? [...classNames]
     : [...classNames, trimmedClass].sort();
 
-  try {
-    if (editingStudentIndex !== null) {
-      const studentLama =
-        students[editingStudentIndex];
+  let updatedStudents: StudentInfo[];
 
-      await ubahSiswaManual(
-        studentLama,
-        studentBaru
+  if (editingStudentIndex !== null) {
+    updatedStudents = [...students];
+
+    updatedStudents[editingStudentIndex] = {
+      name: trimmedName,
+      className: trimmedClass,
+    };
+  } else {
+    const duplicate = students.some(
+      (student) =>
+        student.name.toLowerCase() ===
+          trimmedName.toLowerCase() &&
+        student.className.toLowerCase() ===
+          trimmedClass.toLowerCase()
+    );
+
+    if (duplicate) {
+      showError(
+        'Siswa dengan nama dan kelas yang sama sudah ada.'
       );
-
-      const updatedStudents = [...students];
-
-      updatedStudents[editingStudentIndex] =
-        studentBaru;
-
-      onUpdateStudents(updatedStudents);
-      onUpdateClasses(updatedClasses);
-
-      showNotification(
-        `Siswa "${trimmedName}" berhasil diperbarui.`
-      );
-
-      setEditingStudentIndex(null);
-    } else {
-      const duplicate = students.some(
-        (student) =>
-          student.name.toLowerCase() ===
-            trimmedName.toLowerCase() &&
-          student.className.toLowerCase() ===
-            trimmedClass.toLowerCase()
-      );
-
-      if (duplicate) {
-        showError(
-          'Siswa dengan nama dan kelas yang sama sudah ada.'
-        );
-        return;
-      }
-
-      await tambahSiswaManual(studentBaru);
-
-      onUpdateStudents([
-        ...students,
-        studentBaru,
-      ]);
-
-      onUpdateClasses(updatedClasses);
-
-      showNotification(
-        `Siswa "${trimmedName}" berhasil ditambahkan.`
-      );
+      return;
     }
+
+    updatedStudents = [
+      ...students,
+      {
+        name: trimmedName,
+        className: trimmedClass,
+      },
+    ];
+  }
+
+  try {
+    await simpanDatabaseSiswa(
+      updatedStudents,
+      updatedClasses,
+      'replace'
+    );
+
+    onUpdateStudents(updatedStudents);
+    onUpdateClasses(updatedClasses);
+
+    showNotification(
+      editingStudentIndex !== null
+        ? `Siswa "${trimmedName}" berhasil diperbarui.`
+        : `Siswa "${trimmedName}" berhasil ditambahkan.`
+    );
 
     setStudentNameInput('');
     setStudentClassInput('');
+    setEditingStudentIndex(null);
   } catch (error) {
     showError(
       error instanceof Error
         ? error.message
-        : 'Gagal menyimpan siswa ke database.'
+        : 'Gagal menyimpan siswa ke Supabase.'
     );
   }
 };
-
-    if (editingStudentIndex !== null) {
-      // Edit existing
-      const updated = [...students];
-      updated[editingStudentIndex] = { name: trimmedName, className: trimmedClass };
-      onUpdateStudents(updated);
-      showNotification(`Siswa "${trimmedName}" berhasil diperbarui.`);
-      setEditingStudentIndex(null);
-    } else {
-      // Add new student
-      const duplicate = students.some(
-        (s) => s.name.toLowerCase() === trimmedName.toLowerCase() && s.className === trimmedClass
-      );
-      if (duplicate) {
-        showError('Siswa dengan nama dan kelas yang sama sudah ada.');
-        return;
-      }
-      onUpdateStudents([...students, { name: trimmedName, className: trimmedClass }]);
-      showNotification(`Siswa "${trimmedName}" berhasil ditambahkan.`);
-    }
-
-    setStudentNameInput('');
-    setStudentClassInput('');
-  };
 
   const handleStartEditStudent = (index: number) => {
     const target = students[index];
