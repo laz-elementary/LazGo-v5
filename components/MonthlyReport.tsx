@@ -47,6 +47,8 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
 
   // Filter state for separate records breakdown table
   const [recordSearch, setRecordSearch] = useState('');
+  const [recordDateFilter, setRecordDateFilter] =
+  useState('');
   const [classFilter, setClassFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | 'kedatangan' | 'kepulangan'>('all');
@@ -208,6 +210,17 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
   // Additional detail view table filtering (search, class, category, type, sorting)
   const detailedRecords = useMemo(() => {
     let result = filteredRecordsForMonth.filter((rec) => {
+      const recordDate = new Date(rec.id);
+
+const recordDateKey = [
+  recordDate.getFullYear(),
+  String(recordDate.getMonth() + 1).padStart(2, '0'),
+  String(recordDate.getDate()).padStart(2, '0'),
+].join('-');
+
+const matchesDate = recordDateFilter
+  ? recordDateKey === recordDateFilter
+  : true;
       const matchesSearch =
         rec.name.toLowerCase().includes(recordSearch.toLowerCase()) ||
         (rec.reason && rec.reason.toLowerCase().includes(recordSearch.toLowerCase()));
@@ -220,8 +233,13 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
           ? rec.tardinessType === 'kepulangan'
           : rec.tardinessType !== 'kepulangan';
 
-      return matchesSearch && matchesClass && matchesCategory && matchesType;
-    });
+      return (
+  matchesSearch &&
+  matchesDate &&
+  matchesClass &&
+  matchesCategory &&
+  matchesType
+);
 
     result.sort((a, b) => {
       if (sortBy === 'date-desc') return new Date(b.id).getTime() - new Date(a.id).getTime();
@@ -230,8 +248,15 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
       return 0;
     });
 
-    return result;
-  }, [filteredRecordsForMonth, recordSearch, classFilter, categoryFilter, typeFilter, sortBy]);
+    }, [
+  filteredRecordsForMonth,
+  recordSearch,
+  recordDateFilter,
+  classFilter,
+  categoryFilter,
+  typeFilter,
+  sortBy,
+]);
 
   // Monthly statistics summary
   const monthlyStats = useMemo(() => {
@@ -963,6 +988,26 @@ if (kepulanganHarian.length > 0) {
                 className="pl-8 pr-3 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-xs text-gray-900 dark:text-white focus:ring-2 focus:ring-sky-500 focus:outline-none w-full sm:w-40"
               />
             </div>
+            {/* Date Filter */}
+<div className="flex items-center gap-1">
+  <input
+    type="date"
+    value={recordDateFilter}
+    onChange={(e) => setRecordDateFilter(e.target.value)}
+    className="px-2.5 py-1.5 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-xs text-gray-900 dark:text-white focus:ring-2 focus:ring-sky-500 focus:outline-none"
+    title="Pilih tanggal catatan"
+  />
+
+  {recordDateFilter && (
+    <button
+      type="button"
+      onClick={() => setRecordDateFilter('')}
+      className="px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+    >
+      Semua
+    </button>
+  )}
+</div>
 
             {/* Class Filter */}
             <select
