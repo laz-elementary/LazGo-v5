@@ -1270,6 +1270,7 @@ if (kepulanganHarian.length > 0) {
           </table>
         </div>
       </div>
+    </div>
 
       {/* Delete Confirmation Modal */}
       {deleteConfirmRecord && (
