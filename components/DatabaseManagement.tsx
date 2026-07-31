@@ -95,13 +95,94 @@ export const DatabaseManagement: React.FC<DatabaseManagementProps> = ({
 
   // Handle Add or Edit Student
   
-    const trimmedName = studentNameInput.trim();
-    const trimmedClass = studentClassInput.trim();
+    const handleSaveStudent = async (
+  e: React.FormEvent
+) => {
+  e.preventDefault();
 
-    // Check if class exists in class list, if not add it
-    if (!classNames.includes(trimmedClass)) {
-      onUpdateClasses([...classNames, trimmedClass].sort());
+  if (
+    !studentNameInput.trim() ||
+    !studentClassInput.trim()
+  ) {
+    showError('Nama Siswa dan Kelas harus diisi.');
+    return;
+  }
+
+  const trimmedName = studentNameInput.trim();
+  const trimmedClass = studentClassInput.trim();
+
+  const studentBaru: StudentInfo = {
+    name: trimmedName,
+    className: trimmedClass,
+  };
+
+  const updatedClasses = classNames.includes(trimmedClass)
+    ? classNames
+    : [...classNames, trimmedClass].sort();
+
+  try {
+    if (editingStudentIndex !== null) {
+      const studentLama =
+        students[editingStudentIndex];
+
+      await ubahSiswaManual(
+        studentLama,
+        studentBaru
+      );
+
+      const updatedStudents = [...students];
+
+      updatedStudents[editingStudentIndex] =
+        studentBaru;
+
+      onUpdateStudents(updatedStudents);
+      onUpdateClasses(updatedClasses);
+
+      showNotification(
+        `Siswa "${trimmedName}" berhasil diperbarui.`
+      );
+
+      setEditingStudentIndex(null);
+    } else {
+      const duplicate = students.some(
+        (student) =>
+          student.name.toLowerCase() ===
+            trimmedName.toLowerCase() &&
+          student.className.toLowerCase() ===
+            trimmedClass.toLowerCase()
+      );
+
+      if (duplicate) {
+        showError(
+          'Siswa dengan nama dan kelas yang sama sudah ada.'
+        );
+        return;
+      }
+
+      await tambahSiswaManual(studentBaru);
+
+      onUpdateStudents([
+        ...students,
+        studentBaru,
+      ]);
+
+      onUpdateClasses(updatedClasses);
+
+      showNotification(
+        `Siswa "${trimmedName}" berhasil ditambahkan.`
+      );
     }
+
+    setStudentNameInput('');
+    setStudentClassInput('');
+  } catch (error) {
+    showError(
+      error instanceof Error
+        ? error.message
+        : 'Gagal menyimpan siswa ke database.'
+    );
+  }
+};
 
     if (editingStudentIndex !== null) {
       // Edit existing
