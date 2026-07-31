@@ -910,10 +910,7 @@ if (kepulanganHarian.length > 0) {
             </select>
           </div>
         </div>
-        <div className="mt-5 pt-5 border-t border-gray-200 dark:border-gray-700">
-  <p className="mb-3 text-sm font-bold text-gray-900 dark:text-white">
-    Unduh Rekap Harian
-  </p>
+        </div>
 
       {/* Monthly Summary Statistics Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -1271,7 +1268,7 @@ if (kepulanganHarian.length > 0) {
         </div>
       </div>
     </div>
-
+</div>
       {/* Delete Confirmation Modal */}
       {deleteConfirmRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
