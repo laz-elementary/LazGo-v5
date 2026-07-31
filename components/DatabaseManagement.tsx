@@ -2,7 +2,11 @@ import React, { useState, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { StudentInfo } from '../data/students';
 import { DatabaseIcon, UploadIcon, PlusIcon, TrashIcon, EditIcon, DownloadIcon, UsersIcon, SearchIcon, ClassIcon, CheckIcon } from './icons';
-import { simpanDatabaseSiswa } from '../services/database';
+import {
+  simpanDatabaseSiswa,
+  tambahSiswaManual,
+  ubahSiswaManual,
+} from '../services/database';
 
 interface DatabaseManagementProps {
   students: StudentInfo[];
@@ -90,13 +94,7 @@ export const DatabaseManagement: React.FC<DatabaseManagementProps> = ({
   }, [students, classNames]);
 
   // Handle Add or Edit Student
-  const handleSaveStudent = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!studentNameInput.trim() || !studentClassInput.trim()) {
-      showError('Nama Siswa dan Kelas harus diisi.');
-      return;
-    }
-
+  
     const trimmedName = studentNameInput.trim();
     const trimmedClass = studentClassInput.trim();
 
