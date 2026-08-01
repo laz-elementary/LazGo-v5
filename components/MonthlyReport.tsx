@@ -24,8 +24,13 @@ interface MonthlyReportProps {
   allRecords: TardinessRecord[];
   onDeleteRecord?: (id: string) => void;
   onRefresh?: () => Promise<void>;
-isRefreshing?: boolean;
+  isRefreshing?: boolean;
 }
+
+const getStudentKey = (name: string, className: string) =>
+  `${(className || '').trim().toLocaleLowerCase('id-ID')}::${(name || '')
+    .trim()
+    .toLocaleLowerCase('id-ID')}`;
 
 export const MonthlyReport: React.FC<MonthlyReportProps> = ({
   allRecords,
@@ -234,6 +239,30 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
     };
   }, [dailyRecordsForExport, dailyArrivalRecords, dailyPickupRecords]);
 
+  // Jumlah keterlambatan setiap siswa pada bulan dari tanggal harian yang dipilih.
+  const dailyMonthStudentFrequencyMap = useMemo(() => {
+    const selectedDate = new Date(`${selectedDailyDate}T00:00:00`);
+    const selectedDateMonth = selectedDate.getMonth();
+    const selectedDateYear = selectedDate.getFullYear();
+    const frequencyMap = new Map<string, number>();
+
+    allRecords.forEach((record) => {
+      const recordDate = new Date(record.id);
+
+      if (
+        recordDate.getMonth() !== selectedDateMonth ||
+        recordDate.getFullYear() !== selectedDateYear
+      ) {
+        return;
+      }
+
+      const key = getStudentKey(record.name, record.className);
+      frequencyMap.set(key, (frequencyMap.get(key) || 0) + 1);
+    });
+
+    return frequencyMap;
+  }, [allRecords, selectedDailyDate]);
+
   const selectedDailyDateLabel = useMemo(
     () =>
       new Date(`${selectedDailyDate}T00:00:00`).toLocaleDateString('id-ID', {
@@ -339,6 +368,66 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
 
     return { totalCount, totalMinutes, uniqueStudents, avgMinutes, kedatanganCount, kepulanganCount };
   }, [filteredRecordsForMonth]);
+
+  // Rekap siswa yang terlambat berulang pada bulan yang dipilih.
+  const monthlyStudentFrequencyMap = useMemo(() => {
+    const frequencyMap = new Map<
+      string,
+      {
+        name: string;
+        className: string;
+        totalCount: number;
+        arrivalCount: number;
+        pickupCount: number;
+      }
+    >();
+
+    filteredRecordsForMonth.forEach((record) => {
+      const key = getStudentKey(record.name, record.className);
+      const current = frequencyMap.get(key) || {
+        name: record.name,
+        className: record.className,
+        totalCount: 0,
+        arrivalCount: 0,
+        pickupCount: 0,
+      };
+
+      current.totalCount += 1;
+
+      if (record.tardinessType === 'kepulangan') {
+        current.pickupCount += 1;
+      } else {
+        current.arrivalCount += 1;
+      }
+
+      frequencyMap.set(key, current);
+    });
+
+    return frequencyMap;
+  }, [filteredRecordsForMonth]);
+
+  const repeatedStudentAlerts = useMemo(
+    () =>
+      Array.from(monthlyStudentFrequencyMap.values())
+        .filter((student) => student.totalCount > 1)
+        .sort((a, b) => {
+          if (b.totalCount !== a.totalCount) {
+            return b.totalCount - a.totalCount;
+          }
+
+          const classComparison = a.className.localeCompare(b.className, 'id', {
+            numeric: true,
+            sensitivity: 'base',
+          });
+
+          if (classComparison !== 0) {
+            return classComparison;
+          }
+
+          return a.name.localeCompare(b.name, 'id', { sensitivity: 'base' });
+        }),
+    [monthlyStudentFrequencyMap]
+  );
 
   // Chart 1: Daily Trend Data
   const dailyTrendData = useMemo(() => {
@@ -872,6 +961,7 @@ if (kepulanganHarian.length > 0) {
                         <th className="px-3 py-2">Kelas</th>
                         <th className="px-3 py-2">Durasi</th>
                         <th className="px-3 py-2">Kategori</th>
+                        <th className="px-3 py-2">Catatan Bulan Ini</th>
                         <th className="px-3 py-2">Alasan</th>
                         {onDeleteRecord && <th className="px-3 py-2 text-center">Aksi</th>}
                       </tr>
@@ -879,33 +969,53 @@ if (kepulanganHarian.length > 0) {
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                       {dailyArrivalRecords.length === 0 ? (
                         <tr>
-                          <td colSpan={onDeleteRecord ? 8 : 7} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400">
+                          <td colSpan={onDeleteRecord ? 9 : 8} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400">
                             Tidak ada keterlambatan kedatangan.
                           </td>
                         </tr>
                       ) : (
-                        dailyArrivalRecords.map((record) => (
-                          <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td className="whitespace-nowrap px-3 py-2 font-bold text-sky-600 dark:text-sky-400">{record.arrivalTime}</td>
-                            <td className="whitespace-nowrap px-3 py-2">{record.schoolStartTime || '07:30'}</td>
-                            <td className="px-3 py-2 font-semibold text-gray-900 dark:text-white">{record.name}</td>
-                            <td className="whitespace-nowrap px-3 py-2">{record.className}</td>
-                            <td className="whitespace-nowrap px-3 py-2 font-semibold text-amber-600 dark:text-amber-400">{record.durationMinutes} mnt</td>
-                            <td className="whitespace-nowrap px-3 py-2">{record.category}</td>
-                            <td className="px-3 py-2">{record.reason || '-'}</td>
-                            {onDeleteRecord && (
-                              <td className="whitespace-nowrap px-3 py-2 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => setDeleteConfirmRecord({ id: record.id, name: record.name })}
-                                  className="font-medium text-rose-600 underline hover:text-rose-800 dark:text-rose-400"
-                                >
-                                  Hapus
-                                </button>
+                        dailyArrivalRecords.map((record) => {
+                          const monthlyCount =
+                            dailyMonthStudentFrequencyMap.get(
+                              getStudentKey(record.name, record.className)
+                            ) || 0;
+
+                          return (
+                            <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                              <td className="whitespace-nowrap px-3 py-2 font-bold text-sky-600 dark:text-sky-400">{record.arrivalTime}</td>
+                              <td className="whitespace-nowrap px-3 py-2">{record.schoolStartTime || '07:30'}</td>
+                              <td className="px-3 py-2 font-semibold text-gray-900 dark:text-white">{record.name}</td>
+                              <td className="whitespace-nowrap px-3 py-2">{record.className}</td>
+                              <td className="whitespace-nowrap px-3 py-2 font-semibold text-amber-600 dark:text-amber-400">{record.durationMinutes} mnt</td>
+                              <td className="whitespace-nowrap px-3 py-2">{record.category}</td>
+                              <td className="whitespace-nowrap px-3 py-2">
+                                {monthlyCount > 3 ? (
+                                  <span className="inline-flex rounded-full bg-rose-100 px-2 py-1 text-[10px] font-bold text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
+                                    🔴 Notifikasi · {monthlyCount}x
+                                  </span>
+                                ) : monthlyCount > 1 ? (
+                                  <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                                    ⚠️ Perhatian · {monthlyCount}x
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
                               </td>
-                            )}
-                          </tr>
-                        ))
+                              <td className="px-3 py-2">{record.reason || '-'}</td>
+                              {onDeleteRecord && (
+                                <td className="whitespace-nowrap px-3 py-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirmRecord({ id: record.id, name: record.name })}
+                                    className="font-medium text-rose-600 underline hover:text-rose-800 dark:text-rose-400"
+                                  >
+                                    Hapus
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -930,6 +1040,7 @@ if (kepulanganHarian.length > 0) {
                         <th className="px-3 py-2">Kelas</th>
                         <th className="px-3 py-2">Durasi</th>
                         <th className="px-3 py-2">Kategori</th>
+                        <th className="px-3 py-2">Catatan Bulan Ini</th>
                         <th className="px-3 py-2">Alasan</th>
                         {onDeleteRecord && <th className="px-3 py-2 text-center">Aksi</th>}
                       </tr>
@@ -937,33 +1048,53 @@ if (kepulanganHarian.length > 0) {
                     <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                       {dailyPickupRecords.length === 0 ? (
                         <tr>
-                          <td colSpan={onDeleteRecord ? 8 : 7} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400">
+                          <td colSpan={onDeleteRecord ? 9 : 8} className="px-3 py-8 text-center text-gray-500 dark:text-gray-400">
                             Tidak ada keterlambatan penjemputan/kepulangan.
                           </td>
                         </tr>
                       ) : (
-                        dailyPickupRecords.map((record) => (
-                          <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                            <td className="whitespace-nowrap px-3 py-2 font-bold text-amber-600 dark:text-amber-400">{record.arrivalTime}</td>
-                            <td className="whitespace-nowrap px-3 py-2">{record.schoolStartTime || '14:00'}</td>
-                            <td className="px-3 py-2 font-semibold text-gray-900 dark:text-white">{record.name}</td>
-                            <td className="whitespace-nowrap px-3 py-2">{record.className}</td>
-                            <td className="whitespace-nowrap px-3 py-2 font-semibold text-amber-600 dark:text-amber-400">{record.durationMinutes} mnt</td>
-                            <td className="whitespace-nowrap px-3 py-2">{record.category}</td>
-                            <td className="px-3 py-2">{record.reason || '-'}</td>
-                            {onDeleteRecord && (
-                              <td className="whitespace-nowrap px-3 py-2 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => setDeleteConfirmRecord({ id: record.id, name: record.name })}
-                                  className="font-medium text-rose-600 underline hover:text-rose-800 dark:text-rose-400"
-                                >
-                                  Hapus
-                                </button>
+                        dailyPickupRecords.map((record) => {
+                          const monthlyCount =
+                            dailyMonthStudentFrequencyMap.get(
+                              getStudentKey(record.name, record.className)
+                            ) || 0;
+
+                          return (
+                            <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                              <td className="whitespace-nowrap px-3 py-2 font-bold text-amber-600 dark:text-amber-400">{record.arrivalTime}</td>
+                              <td className="whitespace-nowrap px-3 py-2">{record.schoolStartTime || '14:00'}</td>
+                              <td className="px-3 py-2 font-semibold text-gray-900 dark:text-white">{record.name}</td>
+                              <td className="whitespace-nowrap px-3 py-2">{record.className}</td>
+                              <td className="whitespace-nowrap px-3 py-2 font-semibold text-amber-600 dark:text-amber-400">{record.durationMinutes} mnt</td>
+                              <td className="whitespace-nowrap px-3 py-2">{record.category}</td>
+                              <td className="whitespace-nowrap px-3 py-2">
+                                {monthlyCount > 3 ? (
+                                  <span className="inline-flex rounded-full bg-rose-100 px-2 py-1 text-[10px] font-bold text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
+                                    🔴 Notifikasi · {monthlyCount}x
+                                  </span>
+                                ) : monthlyCount > 1 ? (
+                                  <span className="inline-flex rounded-full bg-amber-100 px-2 py-1 text-[10px] font-bold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                                    ⚠️ Perhatian · {monthlyCount}x
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
                               </td>
-                            )}
-                          </tr>
-                        ))
+                              <td className="px-3 py-2">{record.reason || '-'}</td>
+                              {onDeleteRecord && (
+                                <td className="whitespace-nowrap px-3 py-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => setDeleteConfirmRecord({ id: record.id, name: record.name })}
+                                    className="font-medium text-rose-600 underline hover:text-rose-800 dark:text-rose-400"
+                                  >
+                                    Hapus
+                                  </button>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })
                       )}
                     </tbody>
                   </table>
@@ -1098,6 +1229,72 @@ if (kepulanganHarian.length > 0) {
           <p className="text-[10px] text-gray-400 mt-0.5">Per keterlambatan</p>
         </div>
       </div>
+
+      {/* Alert siswa yang terlambat berulang */}
+      {repeatedStudentAlerts.length > 0 && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-5 shadow-sm dark:border-amber-800 dark:bg-amber-950/30">
+          <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h3 className="font-bold text-amber-900 dark:text-amber-200">
+                ⚠️ Catatan Siswa Terlambat Berulang
+              </h3>
+              <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                Siswa yang tercatat terlambat lebih dari 1 kali pada bulan {monthNames[selectedMonth]} {selectedYear}.
+              </p>
+            </div>
+
+            <div className="flex flex-wrap gap-2 text-[10px] font-semibold">
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200">
+                2–3 kali: Perlu perhatian
+              </span>
+              <span className="rounded-full bg-rose-100 px-2.5 py-1 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200">
+                Lebih dari 3 kali: Notifikasi
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {repeatedStudentAlerts.map((student) => {
+              const needsNotification = student.totalCount > 3;
+
+              return (
+                <div
+                  key={getStudentKey(student.name, student.className)}
+                  className={`rounded-lg border p-3 ${
+                    needsNotification
+                      ? 'border-rose-200 bg-white dark:border-rose-800 dark:bg-gray-800'
+                      : 'border-amber-200 bg-white dark:border-amber-800 dark:bg-gray-800'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-bold text-gray-900 dark:text-white">{student.name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{student.className}</p>
+                    </div>
+
+                    <span
+                      className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                        needsNotification
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                      }`}
+                    >
+                      {needsNotification ? '🔴 NOTIFIKASI' : '⚠️ PERHATIAN'}
+                    </span>
+                  </div>
+
+                  <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">
+                    {student.totalCount} kali terlambat bulan ini
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Kedatangan: {student.arrivalCount}x · Kepulangan: {student.pickupCount}x
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* GRAFIK ANALISIS KETERLAMBATAN BULANAN */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1341,6 +1538,7 @@ if (kepulanganHarian.length > 0) {
                 <th className="py-3 px-4">Kelas</th>
                 <th className="py-3 px-4">Durasi Terlambat</th>
                 <th className="py-3 px-4">Kategori</th>
+                <th className="py-3 px-4">Catatan</th>
                 <th className="py-3 px-4">Alasan</th>
                 {onDeleteRecord && <th className="py-3 px-4 text-center">Aksi</th>}
               </tr>
@@ -1348,7 +1546,7 @@ if (kepulanganHarian.length > 0) {
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {detailedRecords.length === 0 ? (
                 <tr>
-                  <td colSpan={onDeleteRecord ? 10 : 9} className="py-8 text-center text-gray-500 dark:text-gray-400">
+                  <td colSpan={onDeleteRecord ? 11 : 10} className="py-8 text-center text-gray-500 dark:text-gray-400">
                     Tidak ada catatan keterlambatan untuk periode {monthNames[selectedMonth]} {selectedYear}.
                   </td>
                 </tr>
@@ -1362,6 +1560,10 @@ if (kepulanganHarian.length > 0) {
                   });
 
                   const isKepulangan = rec.tardinessType === 'kepulangan';
+                  const studentFrequency = monthlyStudentFrequencyMap.get(
+                    getStudentKey(rec.name, rec.className)
+                  );
+                  const monthlyCount = studentFrequency?.totalCount || 0;
 
                   return (
                     <tr key={rec.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
@@ -1408,6 +1610,19 @@ if (kepulanganHarian.length > 0) {
                         >
                           {rec.category}
                         </span>
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {monthlyCount > 3 ? (
+                          <span className="inline-flex rounded-full bg-rose-100 px-2.5 py-1 text-[10px] font-bold text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
+                            🔴 Notifikasi · {monthlyCount}x
+                          </span>
+                        ) : monthlyCount > 1 ? (
+                          <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">
+                            ⚠️ Perhatian · {monthlyCount}x
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-xs text-gray-600 dark:text-gray-300">
                         {rec.reason || '-'}
