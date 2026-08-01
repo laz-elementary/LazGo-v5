@@ -429,6 +429,24 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
     [monthlyStudentFrequencyMap]
   );
 
+
+  const getMonthlyFrequency = (record: TardinessRecord) =>
+    monthlyStudentFrequencyMap.get(
+      getStudentKey(record.name, record.className)
+    )?.totalCount ?? 1;
+
+  const getRepeatAlertStatus = (count: number) => {
+    if (count > 3) {
+      return 'NOTIFIKASI (>3x)';
+    }
+
+    if (count > 1) {
+      return 'PERHATIAN (2-3x)';
+    }
+
+    return '-';
+  };
+
   // Chart 1: Daily Trend Data
   const dailyTrendData = useMemo(() => {
     const daysInMonth = new Date(selectedYear, selectedMonth + 1, 0).getDate();
@@ -500,23 +518,42 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
       alert('Tidak ada data untuk diekspor pada bulan ini.');
       return;
     }
-    const headers = ['ID', 'Tanggal', 'Jenis', 'Jam Datang/Jemput', 'Jam Standar', 'Nama Siswa', 'Kelas', 'Durasi Terlambat (mnt)', 'Kategori', 'Alasan'];
+
+    const headers = [
+      'ID',
+      'Tanggal',
+      'Jenis',
+      'Jam Datang/Jemput',
+      'Jam Standar',
+      'Nama Siswa',
+      'Kelas',
+      'Durasi Terlambat (mnt)',
+      'Kategori',
+      'Alasan',
+      'Frekuensi Bulan Ini',
+      'Status Alert',
+    ];
+
     const csvContent = [
       headers.join(','),
-     ...sortedRecordsForExport.map((r) =>
-        [
-          `"${r.id}"`,
-          `"${new Date(r.id).toLocaleDateString('id-ID')}"`,
-          `"${r.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan'}"`,
-          `"${r.arrivalTime}"`,
-          `"${r.schoolStartTime || (r.tardinessType === 'kepulangan' ? '14:00' : '07:30')}"`,
-          `"${r.name}"`,
-          `"${r.className}"`,
-          r.durationMinutes,
-          r.category,
-          `"${r.reason || ''}"`,
-        ].join(',')
-      ),
+      ...sortedRecordsForExport.map((record) => {
+        const monthlyCount = getMonthlyFrequency(record);
+
+        return [
+          `"${record.id}"`,
+          `"${new Date(record.id).toLocaleDateString('id-ID')}"`,
+          `"${record.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan'}"`,
+          `"${record.arrivalTime}"`,
+          `"${record.schoolStartTime || (record.tardinessType === 'kepulangan' ? '14:00' : '07:30')}"`,
+          `"${record.name}"`,
+          `"${record.className}"`,
+          record.durationMinutes,
+          `"${record.category}"`,
+          `"${record.reason || ''}"`,
+          `"${monthlyCount}x"`,
+          `"${getRepeatAlertStatus(monthlyCount)}"`,
+        ].join(',');
+      }),
     ].join('\n');
 
     const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
@@ -534,21 +571,43 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
       alert('Tidak ada data untuk diekspor pada bulan ini.');
       return;
     }
-    const dataToExport = sortedRecordsForExport.map((r) => ({
-      Tanggal: new Date(r.id).toLocaleDateString('id-ID'),
-      Jenis: r.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan',
-      'Jam Realisasi': r.arrivalTime,
-      'Jam Standar': r.schoolStartTime || (r.tardinessType === 'kepulangan' ? '14:00' : '07:30'),
-      'Nama Siswa': r.name,
-      Kelas: r.className,
-      'Durasi Terlambat (menit)': r.durationMinutes,
-      Kategori: r.category,
-      Alasan: r.reason || '',
+
+    const dataToExport = sortedRecordsForExport.map((record) => {
+      const monthlyCount = getMonthlyFrequency(record);
+
+      return {
+        Tanggal: new Date(record.id).toLocaleDateString('id-ID'),
+        Jenis: record.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan',
+        'Jam Realisasi': record.arrivalTime,
+        'Jam Standar': record.schoolStartTime || (record.tardinessType === 'kepulangan' ? '14:00' : '07:30'),
+        'Nama Siswa': record.name,
+        Kelas: record.className,
+        'Durasi Terlambat (menit)': record.durationMinutes,
+        Kategori: record.category,
+        Alasan: record.reason || '',
+        'Frekuensi Bulan Ini': `${monthlyCount}x`,
+        'Status Alert': getRepeatAlertStatus(monthlyCount),
+      };
+    });
+
+    const repeatedSummary = repeatedStudentAlerts.map((student) => ({
+      'Nama Siswa': student.name,
+      Kelas: student.className,
+      'Total Terlambat': `${student.totalCount}x`,
+      Kedatangan: `${student.arrivalCount}x`,
+      Kepulangan: `${student.pickupCount}x`,
+      Status: getRepeatAlertStatus(student.totalCount),
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(dataToExport);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Keterlambatan Bulanan');
+    const detailWorksheet = XLSX.utils.json_to_sheet(dataToExport);
+    XLSX.utils.book_append_sheet(workbook, detailWorksheet, 'Keterlambatan Bulanan');
+
+    if (repeatedSummary.length > 0) {
+      const alertWorksheet = XLSX.utils.json_to_sheet(repeatedSummary);
+      XLSX.utils.book_append_sheet(workbook, alertWorksheet, 'Alert Siswa Berulang');
+    }
+
     XLSX.writeFile(workbook, `${reportFileName}.xlsx`);
   };
 
@@ -559,7 +618,7 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
     }
 
     try {
-      const doc = new jsPDF();
+      const doc = new jsPDF({ orientation: 'landscape' });
 
       doc.setFontSize(16);
       doc.text('Rekap Laporan Keterlambatan Siswa Bulanan', 14, 18);
@@ -575,97 +634,123 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
         32
       );
 
+      let posisiY = 40;
+      doc.setTextColor(0);
+
+      if (repeatedStudentAlerts.length > 0) {
+        doc.setFontSize(11);
+        doc.text('Catatan Siswa Terlambat Berulang', 14, posisiY);
+
+        autoTable(doc, {
+          head: [[
+            'Nama Siswa',
+            'Kelas',
+            'Total',
+            'Kedatangan',
+            'Kepulangan',
+            'Status',
+          ]],
+          body: repeatedStudentAlerts.map((student) => [
+            student.name,
+            student.className,
+            `${student.totalCount}x`,
+            `${student.arrivalCount}x`,
+            `${student.pickupCount}x`,
+            getRepeatAlertStatus(student.totalCount),
+          ]),
+          startY: posisiY + 4,
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [217, 119, 6] },
+        });
+
+        posisiY =
+          ((doc as any).lastAutoTable?.finalY ?? posisiY + 4) + 10;
+      }
+
       const tableColumn = [
-  'Tanggal',
-  'Jam Realisasi',
-  'Nama Siswa',
-  'Kelas',
-  'Durasi (mnt)',
-  'Kategori',
-  'Alasan',
-];
+        'Tanggal',
+        'Jam',
+        'Nama Siswa',
+        'Kelas',
+        'Durasi',
+        'Kategori',
+        'Alasan',
+        'Frekuensi',
+        'Status Alert',
+      ];
 
-const buatBarisBulanan = (
-  records: TardinessRecord[]
-) =>
-  records.map((record) => [
-    new Date(record.id).toLocaleDateString('id-ID'),
-    record.arrivalTime,
-    record.name,
-    record.className,
-    `${record.durationMinutes} mnt`,
-    record.category,
-    record.reason || '-',
-  ]);
+      const buatBarisBulanan = (records: TardinessRecord[]) =>
+        records.map((record) => {
+          const monthlyCount = getMonthlyFrequency(record);
 
-const kedatanganBulanan =
-  sortedRecordsForExport.filter(
-    (record) =>
-      record.tardinessType !== 'kepulangan'
-  );
+          return [
+            new Date(record.id).toLocaleDateString('id-ID'),
+            record.arrivalTime,
+            record.name,
+            record.className,
+            `${record.durationMinutes} mnt`,
+            record.category,
+            record.reason || '-',
+            `${monthlyCount}x`,
+            getRepeatAlertStatus(monthlyCount),
+          ];
+        });
 
-const kepulanganBulanan =
-  sortedRecordsForExport.filter(
-    (record) =>
-      record.tardinessType === 'kepulangan'
-  );
+      const kedatanganBulanan = sortedRecordsForExport.filter(
+        (record) => record.tardinessType !== 'kepulangan'
+      );
 
-let posisiY = 38;
+      const kepulanganBulanan = sortedRecordsForExport.filter(
+        (record) => record.tardinessType === 'kepulangan'
+      );
 
-doc.setTextColor(0);
+      if (kedatanganBulanan.length > 0) {
+        if (posisiY > 175) {
+          doc.addPage();
+          posisiY = 18;
+        }
 
-if (kedatanganBulanan.length > 0) {
-  doc.setFontSize(11);
-  doc.text(
-    'A. Keterlambatan Kedatangan',
-    14,
-    posisiY
-  );
+        doc.setFontSize(11);
+        doc.text('A. Keterlambatan Kedatangan', 14, posisiY);
 
-  autoTable(doc, {
-    head: [tableColumn],
-    body: buatBarisBulanan(kedatanganBulanan),
-    startY: posisiY + 4,
-    styles: {
-      fontSize: 8,
-    },
-    headStyles: {
-      fillColor: [14, 116, 144],
-    },
-  });
+        autoTable(doc, {
+          head: [tableColumn],
+          body: buatBarisBulanan(kedatanganBulanan),
+          startY: posisiY + 4,
+          styles: { fontSize: 7 },
+          headStyles: { fillColor: [14, 116, 144] },
+          columnStyles: {
+            6: { cellWidth: 45 },
+            8: { cellWidth: 31 },
+          },
+        });
 
-  posisiY =
-    ((doc as any).lastAutoTable?.finalY ??
-      posisiY + 4) + 10;
-}
+        posisiY =
+          ((doc as any).lastAutoTable?.finalY ?? posisiY + 4) + 10;
+      }
 
-if (kepulanganBulanan.length > 0) {
-  if (posisiY > 260) {
-    doc.addPage();
-    posisiY = 18;
-  }
+      if (kepulanganBulanan.length > 0) {
+        if (posisiY > 175) {
+          doc.addPage();
+          posisiY = 18;
+        }
 
-  doc.setFontSize(11);
-  doc.setTextColor(0);
+        doc.setFontSize(11);
+        doc.setTextColor(0);
+        doc.text('B. Keterlambatan Penjemputan/Kepulangan', 14, posisiY);
 
-  doc.text(
-    'B. Keterlambatan Penjemputan/Kepulangan',
-    14,
-    posisiY
-  );
-
-  autoTable(doc, {
-    head: [tableColumn],
-    body: buatBarisBulanan(kepulanganBulanan),
-    startY: posisiY + 4,
-    styles: {
-      fontSize: 8,
-    },
-    headStyles: {
-      fillColor: [14, 116, 144],
-    },
-  });
-}
+        autoTable(doc, {
+          head: [tableColumn],
+          body: buatBarisBulanan(kepulanganBulanan),
+          startY: posisiY + 4,
+          styles: { fontSize: 7 },
+          headStyles: { fillColor: [14, 116, 144] },
+          columnStyles: {
+            6: { cellWidth: 45 },
+            8: { cellWidth: 31 },
+          },
+        });
+      }
 
       doc.save(`${reportFileName}.pdf`);
     } catch (err) {
