@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
@@ -19,6 +19,7 @@ import {
 } from 'recharts';
 import { TardinessRecord, TardinessCategory } from '../types';
 import { PdfIcon, ExcelIcon, ExportIcon, SearchIcon, TagIcon, DownloadIcon } from './icons';
+import { supabase } from '../services/supabase';
 
 interface MonthlyReportProps {
   allRecords: TardinessRecord[];
@@ -26,6 +27,44 @@ interface MonthlyReportProps {
   onRefresh?: () => Promise<void>;
   isRefreshing?: boolean;
 }
+
+type PickupTrackingRow = {
+  id: string;
+  created_at: string;
+  tanggal: string;
+  nama_siswa: string;
+  kelas: string;
+  jam_standar: string | null;
+  jam_aktual: string | null;
+  jam_input_awal: string | null;
+  jam_dijemput: string | null;
+  status_penjemputan: 'menunggu' | 'selesai' | null;
+};
+
+const getCurrentTimeValue = () => {
+  const now = new Date();
+  return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+};
+
+const getTodayDateKey = () => {
+  const today = new Date();
+  return [
+    today.getFullYear(),
+    String(today.getMonth() + 1).padStart(2, '0'),
+    String(today.getDate()).padStart(2, '0'),
+  ].join('-');
+};
+
+const timeToMinutes = (value: string | null | undefined) => {
+  if (!value) return 0;
+  const [hours, minutes] = value.slice(0, 5).split(':').map(Number);
+  return hours * 60 + minutes;
+};
+
+const getDurationMinutes = (
+  start: string | null | undefined,
+  end: string | null | undefined
+) => Math.max(0, timeToMinutes(end) - timeToMinutes(start));
 
 const getStudentKey = (name: string, className: string) =>
   `${(className || '').trim().toLocaleLowerCase('id-ID')}::${(name || '')
@@ -62,6 +101,16 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
   const [sortBy, setSortBy] = useState<'date-desc' | 'date-asc' | 'duration-desc'>('date-desc');
 
   const [deleteConfirmRecord, setDeleteConfirmRecord] = useState<{ id: string; name: string } | null>(null);
+
+  const [pickupTrackingRows, setPickupTrackingRows] = useState<PickupTrackingRow[]>([]);
+  const [pickupEditTimes, setPickupEditTimes] = useState<Record<string, string>>({});
+  const [isLoadingPickupTracking, setIsLoadingPickupTracking] = useState(false);
+  const [savingPickupId, setSavingPickupId] = useState<string | null>(null);
+  const [pickupUpdateMessage, setPickupUpdateMessage] = useState<{
+    type: 'success' | 'error';
+    text: string;
+  } | null>(null);
+  const [clockTick, setClockTick] = useState(Date.now());
 
   const monthNames = [
     'Januari',
@@ -273,6 +322,150 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
       }),
     [selectedDailyDate]
   );
+
+
+  const loadPickupTracking = useCallback(async () => {
+    setIsLoadingPickupTracking(true);
+
+    try {
+      const { data, error } = await supabase
+        .from('keterlambatan')
+        .select(
+          'id, created_at, tanggal, nama_siswa, kelas, jam_standar, jam_aktual, jam_input_awal, jam_dijemput, status_penjemputan'
+        )
+        .eq('tanggal', selectedDailyDate)
+        .gte('jam_standar', '12:00')
+        .order('created_at', { ascending: true });
+
+      if (error) {
+        throw error;
+      }
+
+      const rows = (data ?? []) as PickupTrackingRow[];
+      setPickupTrackingRows(rows);
+
+      const defaultPickupTime = getCurrentTimeValue();
+      setPickupEditTimes((previous) => {
+        const next = { ...previous };
+        rows.forEach((row) => {
+          if (row.status_penjemputan === 'menunggu' && !next[row.id]) {
+            next[row.id] = defaultPickupTime;
+          }
+        });
+        return next;
+      });
+    } catch (error) {
+      setPickupUpdateMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? `Monitoring penjemputan belum dapat dimuat: ${error.message}`
+            : 'Monitoring penjemputan belum dapat dimuat.',
+      });
+    } finally {
+      setIsLoadingPickupTracking(false);
+    }
+  }, [selectedDailyDate]);
+
+  useEffect(() => {
+    if (reportMode !== 'daily') return;
+
+    void loadPickupTracking();
+    const refreshInterval = window.setInterval(() => {
+      void loadPickupTracking();
+    }, 10000);
+
+    return () => window.clearInterval(refreshInterval);
+  }, [reportMode, loadPickupTracking]);
+
+  useEffect(() => {
+    const clockInterval = window.setInterval(() => {
+      setClockTick(Date.now());
+    }, 30000);
+
+    return () => window.clearInterval(clockInterval);
+  }, []);
+
+  const currentClockTime = useMemo(
+    () => getCurrentTimeValue(),
+    [clockTick]
+  );
+
+  const waitingPickupCount = useMemo(
+    () =>
+      pickupTrackingRows.filter(
+        (row) => row.status_penjemputan === 'menunggu'
+      ).length,
+    [pickupTrackingRows]
+  );
+
+  const handleCompletePickup = async (row: PickupTrackingRow) => {
+    const pickupTime = pickupEditTimes[row.id] || getCurrentTimeValue();
+    const initialInputTime = row.jam_input_awal || row.jam_aktual;
+
+    if (!pickupTime) {
+      setPickupUpdateMessage({
+        type: 'error',
+        text: 'Isi jam dijemput terlebih dahulu.',
+      });
+      return;
+    }
+
+    if (
+      initialInputTime &&
+      timeToMinutes(pickupTime) < timeToMinutes(initialInputTime)
+    ) {
+      setPickupUpdateMessage({
+        type: 'error',
+        text: `Jam dijemput ${row.nama_siswa} tidak boleh lebih awal daripada jam input ${initialInputTime.slice(0, 5)}.`,
+      });
+      return;
+    }
+
+    const totalDelay = getDurationMinutes(row.jam_standar, pickupTime);
+    const category =
+      totalDelay <= 5 ? 'Ringan' : totalDelay <= 15 ? 'Sedang' : 'Berat';
+
+    setSavingPickupId(row.id);
+    setPickupUpdateMessage(null);
+
+    try {
+      const { error } = await supabase
+        .from('keterlambatan')
+        .update({
+          jam_aktual: pickupTime,
+          jam_dijemput: pickupTime,
+          status_penjemputan: 'selesai',
+          kategori: category,
+        })
+        .eq('id', row.id);
+
+      if (error) {
+        throw error;
+      }
+
+      const waitingMinutes = getDurationMinutes(initialInputTime, pickupTime);
+      setPickupUpdateMessage({
+        type: 'success',
+        text: `${row.nama_siswa} tercatat dijemput pukul ${pickupTime}. Waktu menunggu sejak diinput: ${waitingMinutes} menit.`,
+      });
+
+      await loadPickupTracking();
+      if (onRefresh) {
+        await onRefresh();
+      }
+    } catch (error) {
+      setPickupUpdateMessage({
+        type: 'error',
+        text:
+          error instanceof Error
+            ? `Gagal memperbarui jam penjemputan: ${error.message}`
+            : 'Gagal memperbarui jam penjemputan.',
+      });
+    } finally {
+      setSavingPickupId(null);
+    }
+  };
 
   // Additional detail view table filtering (search, class, category, type, sorting)
   const detailedRecords = useMemo(() => {
@@ -1020,6 +1213,153 @@ if (kepulanganHarian.length > 0) {
                 <p className="mt-1 text-xl font-bold text-teal-600 dark:text-teal-400">{dailyStats.totalMinutes} mnt</p>
               </div>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-amber-200 bg-white p-5 shadow-md dark:border-amber-900/60 dark:bg-gray-800">
+            <div className="mb-4 flex flex-col gap-3 border-b border-gray-200 pb-4 dark:border-gray-700 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                    Monitoring Penjemputan Siswa
+                  </h3>
+                  {waitingPickupCount > 0 && (
+                    <span className="rounded-full bg-rose-100 px-2.5 py-1 text-[11px] font-bold text-rose-700 dark:bg-rose-900/50 dark:text-rose-300">
+                      {waitingPickupCount} masih menunggu
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 max-w-3xl text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+                  Data kepulangan yang baru diinput otomatis berstatus <strong>Masih Menunggu</strong>. Saat siswa dijemput, isi jam aktual lalu klik <strong>Simpan Dijemput</strong>. Sistem menyimpan jam input awal, jam dijemput, serta lama menunggu.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void loadPickupTracking()}
+                disabled={isLoadingPickupTracking}
+                className="rounded-lg border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/40"
+              >
+                {isLoadingPickupTracking ? 'Memuat...' : '↻ Refresh Monitoring'}
+              </button>
+            </div>
+
+            {pickupUpdateMessage && (
+              <div
+                className={`mb-4 rounded-lg border px-3 py-2 text-xs font-medium ${
+                  pickupUpdateMessage.type === 'success'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300'
+                    : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/50 dark:text-rose-300'
+                }`}
+              >
+                {pickupUpdateMessage.text}
+              </div>
+            )}
+
+            {pickupTrackingRows.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-300 px-4 py-7 text-center text-xs text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                Belum ada data kepulangan pada tanggal ini.
+              </div>
+            ) : (
+              <div className="max-h-[460px] overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                <table className="w-full min-w-[1050px] text-left text-xs text-gray-700 dark:text-gray-300">
+                  <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <th className="px-3 py-2">Nama Siswa</th>
+                      <th className="px-3 py-2">Kelas</th>
+                      <th className="px-3 py-2">Jam Pulang</th>
+                      <th className="px-3 py-2">Dicatat Belum Dijemput</th>
+                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">Menunggu Sejak Input</th>
+                      <th className="px-3 py-2">Total Terlambat</th>
+                      <th className="px-3 py-2">Jam Dijemput / Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                    {pickupTrackingRows.map((row) => {
+                      const isWaiting = row.status_penjemputan === 'menunggu';
+                      const initialInputTime = row.jam_input_awal || row.jam_aktual;
+                      const pickupTime = row.jam_dijemput || (!isWaiting ? row.jam_aktual : null);
+                      const isToday = selectedDailyDate === getTodayDateKey();
+                      const waitingMinutes = pickupTime
+                        ? getDurationMinutes(initialInputTime, pickupTime)
+                        : isToday
+                          ? getDurationMinutes(initialInputTime, currentClockTime)
+                          : null;
+                      const totalDelay = pickupTime
+                        ? getDurationMinutes(row.jam_standar, pickupTime)
+                        : isToday
+                          ? getDurationMinutes(row.jam_standar, currentClockTime)
+                          : getDurationMinutes(row.jam_standar, initialInputTime);
+                      const alertClass =
+                        totalDelay >= 30
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300'
+                          : totalDelay >= 20
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                            : 'bg-sky-100 text-sky-700 dark:bg-sky-900/50 dark:text-sky-300';
+
+                      return (
+                        <tr key={row.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                          <td className="px-3 py-2 font-semibold text-gray-900 dark:text-white">{row.nama_siswa}</td>
+                          <td className="whitespace-nowrap px-3 py-2">{row.kelas}</td>
+                          <td className="whitespace-nowrap px-3 py-2">{row.jam_standar?.slice(0, 5) || '-'}</td>
+                          <td className="whitespace-nowrap px-3 py-2 font-semibold text-amber-600 dark:text-amber-400">
+                            {initialInputTime?.slice(0, 5) || '-'}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2">
+                            {isWaiting ? (
+                              <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${alertClass}`}>
+                                {totalDelay >= 30 ? '🔴 Melebihi 30 Menit' : totalDelay >= 20 ? '⚠️ Lebih dari 20 Menit' : 'Menunggu'}
+                              </span>
+                            ) : (
+                              <span className="inline-flex rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold text-emerald-700 dark:bg-emerald-900/50 dark:text-emerald-300">
+                                ✓ Selesai
+                              </span>
+                            )}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2 font-semibold">
+                            {waitingMinutes === null ? 'Belum diselesaikan' : `${waitingMinutes} menit`}
+                          </td>
+                          <td className="whitespace-nowrap px-3 py-2">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-bold ${alertClass}`}>
+                              {totalDelay} menit
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            {isWaiting ? (
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="time"
+                                  value={pickupEditTimes[row.id] || currentClockTime}
+                                  onChange={(event) =>
+                                    setPickupEditTimes((previous) => ({
+                                      ...previous,
+                                      [row.id]: event.target.value,
+                                    }))
+                                  }
+                                  className="rounded-lg border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void handleCompletePickup(row)}
+                                  disabled={savingPickupId === row.id}
+                                  className="whitespace-nowrap rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {savingPickupId === row.id ? 'Menyimpan...' : 'Simpan Dijemput'}
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                                Dijemput {pickupTime?.slice(0, 5) || '-'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {dailyRecordsForExport.length === 0 ? (
