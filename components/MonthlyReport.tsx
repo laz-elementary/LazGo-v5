@@ -71,6 +71,88 @@ const getStudentKey = (name: string, className: string) =>
     .trim()
     .toLocaleLowerCase('id-ID')}`;
 
+
+const getLocalDateKey = (value: string | Date) => {
+  const date = value instanceof Date ? value : new Date(value);
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+  ].join('-');
+};
+
+const getPickupTrackingKey = (
+  date: string,
+  name: string,
+  className: string
+) => `${date}::${getStudentKey(name, className)}`;
+
+const sortPickupTrackingRows = (rows: PickupTrackingRow[]) =>
+  [...rows].sort((a, b) => {
+    const dateComparison = a.tanggal.localeCompare(b.tanggal);
+    if (dateComparison !== 0) return dateComparison;
+
+    const classComparison = (a.kelas || '').localeCompare(
+      b.kelas || '',
+      'id',
+      { numeric: true, sensitivity: 'base' }
+    );
+    if (classComparison !== 0) return classComparison;
+
+    const nameComparison = (a.nama_siswa || '').localeCompare(
+      b.nama_siswa || '',
+      'id',
+      { sensitivity: 'base' }
+    );
+    if (nameComparison !== 0) return nameComparison;
+
+    return (a.jam_input_awal || a.jam_aktual || '').localeCompare(
+      b.jam_input_awal || b.jam_aktual || ''
+    );
+  });
+
+const getPickupExportInfo = (
+  row: PickupTrackingRow,
+  currentTime: string
+) => {
+  const initialInputTime = row.jam_input_awal || row.jam_aktual;
+  const pickupTime =
+    row.jam_dijemput ||
+    (row.status_penjemputan === 'selesai' ? row.jam_aktual : null);
+  const isWaiting = row.status_penjemputan === 'menunggu' || !pickupTime;
+  const isToday = row.tanggal === getTodayDateKey();
+
+  const waitingMinutes = pickupTime
+    ? getDurationMinutes(initialInputTime, pickupTime)
+    : isToday
+      ? getDurationMinutes(initialInputTime, currentTime)
+      : null;
+
+  const totalDelayMinutes = pickupTime
+    ? getDurationMinutes(row.jam_standar, pickupTime)
+    : isToday
+      ? getDurationMinutes(row.jam_standar, currentTime)
+      : getDurationMinutes(row.jam_standar, row.jam_aktual);
+
+  return {
+    initialInputTime: initialInputTime?.slice(0, 5) || '-',
+    pickupTime: pickupTime?.slice(0, 5) || '-',
+    waitingMinutes,
+    totalDelayMinutes,
+    statusLabel: isWaiting ? 'Masih menunggu' : 'Selesai dijemput',
+    waitingLabel:
+      waitingMinutes === null
+        ? 'Belum diperbarui'
+        : isWaiting
+          ? `${waitingMinutes} mnt (berjalan)`
+          : `${waitingMinutes} mnt`,
+    totalDelayLabel: isWaiting
+      ? `≥${totalDelayMinutes} mnt`
+      : `${totalDelayMinutes} mnt`,
+  };
+};
+
 export const MonthlyReport: React.FC<MonthlyReportProps> = ({
   allRecords,
   onDeleteRecord,
@@ -706,111 +788,264 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
     return Array.from(new Set(filteredRecordsForMonth.map((r) => r.className))).sort();
   }, [filteredRecordsForMonth]);
 
-  const handleExportCSV = () => {
-    if (filteredRecordsForMonth.length === 0) {
-      alert('Tidak ada data untuk diekspor pada bulan ini.');
-      return;
+  const fetchPickupRowsForExport = async (
+    startDate: string,
+    endDate: string
+  ): Promise<PickupTrackingRow[]> => {
+    const { data, error } = await supabase
+      .from('keterlambatan')
+      .select(
+        'id, created_at, tanggal, nama_siswa, kelas, jam_standar, jam_aktual, jam_input_awal, jam_dijemput, status_penjemputan'
+      )
+      .gte('tanggal', startDate)
+      .lte('tanggal', endDate)
+      .gte('jam_standar', '12:00')
+      .order('tanggal', { ascending: true })
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      throw error;
     }
 
-    const headers = [
-      'ID',
-      'Tanggal',
-      'Jenis',
-      'Jam Datang/Jemput',
-      'Jam Standar',
-      'Nama Siswa',
-      'Kelas',
-      'Durasi Terlambat (mnt)',
-      'Kategori',
-      'Alasan',
-      'Frekuensi Bulan Ini',
-      'Status Alert',
-    ];
-
-    const csvContent = [
-      headers.join(','),
-      ...sortedRecordsForExport.map((record) => {
-        const monthlyCount = getMonthlyFrequency(record);
-
-        return [
-          `"${record.id}"`,
-          `"${new Date(record.id).toLocaleDateString('id-ID')}"`,
-          `"${record.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan'}"`,
-          `"${record.arrivalTime}"`,
-          `"${record.schoolStartTime || (record.tardinessType === 'kepulangan' ? '14:00' : '07:30')}"`,
-          `"${record.name}"`,
-          `"${record.className}"`,
-          record.durationMinutes,
-          `"${record.category}"`,
-          `"${record.reason || ''}"`,
-          `"${monthlyCount}x"`,
-          `"${getRepeatAlertStatus(monthlyCount)}"`,
-        ].join(',');
-      }),
-    ].join('\n');
-
-    const blob = new Blob([`\uFEFF${csvContent}`], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${reportFileName}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    return sortPickupTrackingRows((data ?? []) as PickupTrackingRow[]);
   };
 
-  const handleExportXLSX = () => {
-    if (filteredRecordsForMonth.length === 0) {
-      alert('Tidak ada data untuk diekspor pada bulan ini.');
-      return;
-    }
+  const getPickupRowMap = (rows: PickupTrackingRow[]) => {
+    const map = new Map<string, PickupTrackingRow>();
 
-    const dataToExport = sortedRecordsForExport.map((record) => {
-      const monthlyCount = getMonthlyFrequency(record);
-
-      return {
-        Tanggal: new Date(record.id).toLocaleDateString('id-ID'),
-        Jenis: record.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan',
-        'Jam Realisasi': record.arrivalTime,
-        'Jam Standar': record.schoolStartTime || (record.tardinessType === 'kepulangan' ? '14:00' : '07:30'),
-        'Nama Siswa': record.name,
-        Kelas: record.className,
-        'Durasi Terlambat (menit)': record.durationMinutes,
-        Kategori: record.category,
-        Alasan: record.reason || '',
-        'Frekuensi Bulan Ini': `${monthlyCount}x`,
-        'Status Alert': getRepeatAlertStatus(monthlyCount),
-      };
+    rows.forEach((row) => {
+      map.set(
+        getPickupTrackingKey(row.tanggal, row.nama_siswa, row.kelas),
+        row
+      );
     });
 
-    const repeatedSummary = repeatedStudentAlerts.map((student) => ({
-      'Nama Siswa': student.name,
-      Kelas: student.className,
-      'Total Terlambat': `${student.totalCount}x`,
-      Kedatangan: `${student.arrivalCount}x`,
-      Kepulangan: `${student.pickupCount}x`,
-      Status: getRepeatAlertStatus(student.totalCount),
-    }));
-
-    const workbook = XLSX.utils.book_new();
-    const detailWorksheet = XLSX.utils.json_to_sheet(dataToExport);
-    XLSX.utils.book_append_sheet(workbook, detailWorksheet, 'Keterlambatan Bulanan');
-
-    if (repeatedSummary.length > 0) {
-      const alertWorksheet = XLSX.utils.json_to_sheet(repeatedSummary);
-      XLSX.utils.book_append_sheet(workbook, alertWorksheet, 'Alert Siswa Berulang');
-    }
-
-    XLSX.writeFile(workbook, `${reportFileName}.xlsx`);
+    return map;
   };
 
-  const handleExportPDF = () => {
+  const handleExportCSV = async () => {
     if (filteredRecordsForMonth.length === 0) {
       alert('Tidak ada data untuk diekspor pada bulan ini.');
       return;
     }
 
     try {
+      const monthStart = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+      const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+      const monthEnd = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const pickupRows = await fetchPickupRowsForExport(monthStart, monthEnd);
+      const pickupRowMap = getPickupRowMap(pickupRows);
+      const currentTime = getCurrentTimeValue();
+
+      const headers = [
+        'ID',
+        'Tanggal',
+        'Jenis',
+        'Jam Datang/Jemput',
+        'Jam Standar',
+        'Jam Input Awal',
+        'Jam Dijemput Aktual',
+        'Menunggu Sejak Input',
+        'Status Penjemputan',
+        'Nama Siswa',
+        'Kelas',
+        'Durasi Terlambat (mnt)',
+        'Kategori',
+        'Alasan',
+        'Frekuensi Bulan Ini',
+        'Status Alert',
+      ];
+
+      const csvContent = [
+        headers.join(','),
+        ...sortedRecordsForExport.map((record) => {
+          const monthlyCount = getMonthlyFrequency(record);
+          const recordDateKey = getLocalDateKey(record.id);
+          const pickupRow =
+            record.tardinessType === 'kepulangan'
+              ? pickupRowMap.get(
+                  getPickupTrackingKey(
+                    recordDateKey,
+                    record.name,
+                    record.className
+                  )
+                )
+              : undefined;
+          const pickupInfo = pickupRow
+            ? getPickupExportInfo(pickupRow, currentTime)
+            : null;
+
+          return [
+            `"${record.id}"`,
+            `"${new Date(record.id).toLocaleDateString('id-ID')}"`,
+            `"${record.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan'}"`,
+            `"${record.arrivalTime}"`,
+            `"${record.schoolStartTime || (record.tardinessType === 'kepulangan' ? '14:00' : '07:30')}"`,
+            `"${pickupInfo?.initialInputTime || ''}"`,
+            `"${pickupInfo?.pickupTime === '-' ? '' : pickupInfo?.pickupTime || ''}"`,
+            `"${pickupInfo?.waitingLabel || ''}"`,
+            `"${pickupInfo?.statusLabel || ''}"`,
+            `"${record.name}"`,
+            `"${record.className}"`,
+            record.durationMinutes,
+            `"${record.category}"`,
+            `"${(record.reason || '').replace(/"/g, '""')}"`,
+            `"${monthlyCount}x"`,
+            `"${getRepeatAlertStatus(monthlyCount)}"`,
+          ].join(',');
+        }),
+      ].join('\n');
+
+      const blob = new Blob([`\uFEFF${csvContent}`], {
+        type: 'text/csv;charset=utf-8;',
+      });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `${reportFileName}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Gagal menyiapkan CSV monitoring penjemputan:', error);
+      alert('Gagal memuat data monitoring penjemputan untuk CSV.');
+    }
+  };
+
+  const handleExportXLSX = async () => {
+    if (filteredRecordsForMonth.length === 0) {
+      alert('Tidak ada data untuk diekspor pada bulan ini.');
+      return;
+    }
+
+    try {
+      const monthStart = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+      const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+      const monthEnd = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const pickupRows = await fetchPickupRowsForExport(monthStart, monthEnd);
+      const pickupRowMap = getPickupRowMap(pickupRows);
+      const currentTime = getCurrentTimeValue();
+
+      const dataToExport = sortedRecordsForExport.map((record) => {
+        const monthlyCount = getMonthlyFrequency(record);
+        const recordDateKey = getLocalDateKey(record.id);
+        const pickupRow =
+          record.tardinessType === 'kepulangan'
+            ? pickupRowMap.get(
+                getPickupTrackingKey(
+                  recordDateKey,
+                  record.name,
+                  record.className
+                )
+              )
+            : undefined;
+        const pickupInfo = pickupRow
+          ? getPickupExportInfo(pickupRow, currentTime)
+          : null;
+
+        return {
+          Tanggal: new Date(record.id).toLocaleDateString('id-ID'),
+          Jenis:
+            record.tardinessType === 'kepulangan'
+              ? 'Kepulangan'
+              : 'Kedatangan',
+          'Jam Realisasi': record.arrivalTime,
+          'Jam Standar':
+            record.schoolStartTime ||
+            (record.tardinessType === 'kepulangan' ? '14:00' : '07:30'),
+          'Jam Input Awal': pickupInfo?.initialInputTime || '',
+          'Jam Dijemput Aktual':
+            pickupInfo?.pickupTime === '-'
+              ? ''
+              : pickupInfo?.pickupTime || '',
+          'Menunggu Sejak Input': pickupInfo?.waitingLabel || '',
+          'Status Penjemputan': pickupInfo?.statusLabel || '',
+          'Nama Siswa': record.name,
+          Kelas: record.className,
+          'Durasi Terlambat (menit)': record.durationMinutes,
+          Kategori: record.category,
+          Alasan: record.reason || '',
+          'Frekuensi Bulan Ini': `${monthlyCount}x`,
+          'Status Alert': getRepeatAlertStatus(monthlyCount),
+        };
+      });
+
+      const repeatedSummary = repeatedStudentAlerts.map((student) => ({
+        'Nama Siswa': student.name,
+        Kelas: student.className,
+        'Total Terlambat': `${student.totalCount}x`,
+        Kedatangan: `${student.arrivalCount}x`,
+        Kepulangan: `${student.pickupCount}x`,
+        Status: getRepeatAlertStatus(student.totalCount),
+      }));
+
+      const pickupMonitoringSummary = pickupRows.map((row) => {
+        const pickupInfo = getPickupExportInfo(row, currentTime);
+
+        return {
+          Tanggal: new Date(`${row.tanggal}T00:00:00`).toLocaleDateString(
+            'id-ID'
+          ),
+          'Nama Siswa': row.nama_siswa,
+          Kelas: row.kelas,
+          'Jam Pulang Standar': row.jam_standar?.slice(0, 5) || '-',
+          'Jam Input Awal': pickupInfo.initialInputTime,
+          'Jam Dijemput Aktual':
+            pickupInfo.pickupTime === '-' ? '' : pickupInfo.pickupTime,
+          'Menunggu Sejak Input': pickupInfo.waitingLabel,
+          'Total Keterlambatan': pickupInfo.totalDelayLabel,
+          'Status Penjemputan': pickupInfo.statusLabel,
+        };
+      });
+
+      const workbook = XLSX.utils.book_new();
+      const detailWorksheet = XLSX.utils.json_to_sheet(dataToExport);
+      XLSX.utils.book_append_sheet(
+        workbook,
+        detailWorksheet,
+        'Keterlambatan Bulanan'
+      );
+
+      if (pickupMonitoringSummary.length > 0) {
+        const pickupWorksheet =
+          XLSX.utils.json_to_sheet(pickupMonitoringSummary);
+        XLSX.utils.book_append_sheet(
+          workbook,
+          pickupWorksheet,
+          'Monitoring Penjemputan'
+        );
+      }
+
+      if (repeatedSummary.length > 0) {
+        const alertWorksheet = XLSX.utils.json_to_sheet(repeatedSummary);
+        XLSX.utils.book_append_sheet(
+          workbook,
+          alertWorksheet,
+          'Alert Siswa Berulang'
+        );
+      }
+
+      XLSX.writeFile(workbook, `${reportFileName}.xlsx`);
+    } catch (error) {
+      console.error('Gagal menyiapkan Excel monitoring penjemputan:', error);
+      alert('Gagal memuat data monitoring penjemputan untuk Excel.');
+    }
+  };
+
+  const handleExportPDF = async () => {
+    if (filteredRecordsForMonth.length === 0) {
+      alert('Tidak ada data untuk diekspor pada bulan ini.');
+      return;
+    }
+
+    try {
+      const monthStart = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-01`;
+      const lastDay = new Date(selectedYear, selectedMonth + 1, 0).getDate();
+      const monthEnd = `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      const pickupRows = await fetchPickupRowsForExport(monthStart, monthEnd);
+      const currentTime = getCurrentTimeValue();
+
       const doc = new jsPDF({ orientation: 'landscape' });
 
       doc.setFontSize(16);
@@ -943,170 +1178,261 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
             8: { cellWidth: 31 },
           },
         });
+
+        posisiY =
+          ((doc as any).lastAutoTable?.finalY ?? posisiY + 4) + 10;
+      }
+
+      if (pickupRows.length > 0) {
+        if (posisiY > 155) {
+          doc.addPage();
+          posisiY = 18;
+        }
+
+        doc.setFontSize(11);
+        doc.setTextColor(0);
+        doc.text('C. Rekap Monitoring Penjemputan', 14, posisiY);
+
+        autoTable(doc, {
+          head: [[
+            'Tanggal',
+            'Nama Siswa',
+            'Kelas',
+            'Jam Pulang',
+            'Jam Input',
+            'Jam Dijemput',
+            'Menunggu',
+            'Total Terlambat',
+            'Status',
+          ]],
+          body: pickupRows.map((row) => {
+            const pickupInfo = getPickupExportInfo(row, currentTime);
+
+            return [
+              new Date(`${row.tanggal}T00:00:00`).toLocaleDateString(
+                'id-ID'
+              ),
+              row.nama_siswa,
+              row.kelas,
+              row.jam_standar?.slice(0, 5) || '-',
+              pickupInfo.initialInputTime,
+              pickupInfo.pickupTime,
+              pickupInfo.waitingLabel,
+              pickupInfo.totalDelayLabel,
+              pickupInfo.statusLabel,
+            ];
+          }),
+          startY: posisiY + 4,
+          styles: { fontSize: 7 },
+          headStyles: { fillColor: [124, 58, 237] },
+          columnStyles: {
+            1: { cellWidth: 38 },
+            6: { cellWidth: 31 },
+            8: { cellWidth: 28 },
+          },
+        });
       }
 
       doc.save(`${reportFileName}.pdf`);
-    } catch (err) {
-      console.error('Failed to generate PDF:', err);
-      alert('Gagal mengunduh PDF. Silakan coba lagi.');
+    } catch (error) {
+      console.error('Gagal membuat PDF bulanan:', error);
+      alert('Gagal memuat data monitoring penjemputan untuk PDF.');
     }
   };
 
-  const handleExportDailyPDF = () => {
-  if (dailyRecordsForExport.length === 0) {
-    alert('Tidak ada data keterlambatan pada tanggal yang dipilih.');
-    return;
-  }
+  const handleExportDailyPDF = async () => {
+    try {
+      const latestPickupRows = await fetchPickupRowsForExport(
+        selectedDailyDate,
+        selectedDailyDate
+      );
 
-  try {
-    const doc = new jsPDF({
-      orientation: 'landscape',
-    });
+      if (
+        dailyRecordsForExport.length === 0 &&
+        latestPickupRows.length === 0
+      ) {
+        alert('Tidak ada data keterlambatan pada tanggal yang dipilih.');
+        return;
+      }
 
-    const formattedDate = new Date(
-      `${selectedDailyDate}T00:00:00`
-    ).toLocaleDateString('id-ID', {
-      weekday: 'long',
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    });
+      const doc = new jsPDF({
+        orientation: 'landscape',
+      });
 
-    const kedatanganCount = dailyRecordsForExport.filter(
-      (record) => record.tardinessType !== 'kepulangan'
-    ).length;
+      const formattedDate = new Date(
+        `${selectedDailyDate}T00:00:00`
+      ).toLocaleDateString('id-ID', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      });
 
-    const kepulanganCount = dailyRecordsForExport.filter(
-      (record) => record.tardinessType === 'kepulangan'
-    ).length;
+      const kedatanganCount = dailyRecordsForExport.filter(
+        (record) => record.tardinessType !== 'kepulangan'
+      ).length;
 
-    const totalMinutes = dailyRecordsForExport.reduce(
-      (total, record) => total + record.durationMinutes,
-      0
-    );
+      const kepulanganCount = dailyRecordsForExport.filter(
+        (record) => record.tardinessType === 'kepulangan'
+      ).length;
 
-    doc.setFontSize(16);
-    doc.text(
-      'Rekap Laporan Keterlambatan Siswa Harian',
-      14,
-      18
-    );
+      const totalMinutes = dailyRecordsForExport.reduce(
+        (total, record) => total + record.durationMinutes,
+        0
+      );
 
-    doc.setFontSize(10);
-    doc.setTextColor(100);
-    doc.text(`Tanggal: ${formattedDate}`, 14, 25);
+      doc.setFontSize(16);
+      doc.text(
+        'Rekap Laporan Keterlambatan Siswa Harian',
+        14,
+        18
+      );
 
-    doc.setFontSize(9);
-    doc.setTextColor(60);
-    doc.text(
-      `Total: ${dailyRecordsForExport.length}x | Kedatangan: ${kedatanganCount}x | Kepulangan: ${kepulanganCount}x | Total Durasi: ${totalMinutes} menit`,
-      14,
-      32
-    );
+      doc.setFontSize(10);
+      doc.setTextColor(100);
+      doc.text(`Tanggal: ${formattedDate}`, 14, 25);
 
-  const tableColumns = [
-  'Jam Realisasi',
-  'Jam Standar',
-  'Nama Siswa',
-  'Kelas',
-  'Durasi',
-  'Kategori',
-  'Alasan',
-];
+      doc.setFontSize(9);
+      doc.setTextColor(60);
+      doc.text(
+        `Total: ${dailyRecordsForExport.length}x | Kedatangan: ${kedatanganCount}x | Kepulangan: ${kepulanganCount}x | Total Durasi: ${totalMinutes} menit`,
+        14,
+        32
+      );
 
-const buatBarisHarian = (
-  records: TardinessRecord[]
-) =>
-  records.map((record) => [
-    record.arrivalTime,
-    record.schoolStartTime ||
-      (record.tardinessType === 'kepulangan'
-        ? '14:00'
-        : '07:30'),
-    record.name,
-    record.className,
-    `${record.durationMinutes} mnt`,
-    record.category,
-    record.reason || '-',
-  ]);
+      const tableColumns = [
+        'Jam Realisasi',
+        'Jam Standar',
+        'Nama Siswa',
+        'Kelas',
+        'Durasi',
+        'Kategori',
+        'Alasan',
+      ];
 
-const kedatanganHarian =
-  dailyRecordsForExport.filter(
-    (record) =>
-      record.tardinessType !== 'kepulangan'
-  );
+      const buatBarisHarian = (records: TardinessRecord[]) =>
+        records.map((record) => [
+          record.arrivalTime,
+          record.schoolStartTime ||
+            (record.tardinessType === 'kepulangan'
+              ? '14:00'
+              : '07:30'),
+          record.name,
+          record.className,
+          `${record.durationMinutes} mnt`,
+          record.category,
+          record.reason || '-',
+        ]);
 
-const kepulanganHarian =
-  dailyRecordsForExport.filter(
-    (record) =>
-      record.tardinessType === 'kepulangan'
-  );
+      const kedatanganHarian = dailyRecordsForExport.filter(
+        (record) => record.tardinessType !== 'kepulangan'
+      );
 
-let posisiY = 38;
+      const kepulanganHarian = dailyRecordsForExport.filter(
+        (record) => record.tardinessType === 'kepulangan'
+      );
 
-doc.setTextColor(0);
+      let posisiY = 38;
+      doc.setTextColor(0);
 
-if (kedatanganHarian.length > 0) {
-  doc.setFontSize(11);
+      if (kedatanganHarian.length > 0) {
+        doc.setFontSize(11);
+        doc.text('A. Keterlambatan Kedatangan', 14, posisiY);
 
-  doc.text(
-    'A. Keterlambatan Kedatangan',
-    14,
-    posisiY
-  );
+        autoTable(doc, {
+          head: [tableColumns],
+          body: buatBarisHarian(kedatanganHarian),
+          startY: posisiY + 4,
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [14, 116, 144] },
+        });
 
-  autoTable(doc, {
-    head: [tableColumns],
-    body: buatBarisHarian(kedatanganHarian),
-    startY: posisiY + 4,
-    styles: {
-      fontSize: 8,
-    },
-    headStyles: {
-      fillColor: [14, 116, 144],
-    },
-  });
+        posisiY =
+          ((doc as any).lastAutoTable?.finalY ?? posisiY + 4) + 10;
+      }
 
-  posisiY =
-    ((doc as any).lastAutoTable?.finalY ??
-      posisiY + 4) + 10;
-}
+      if (kepulanganHarian.length > 0) {
+        if (posisiY > 175) {
+          doc.addPage();
+          posisiY = 18;
+        }
 
-if (kepulanganHarian.length > 0) {
-  if (posisiY > 175) {
-    doc.addPage();
-    posisiY = 18;
-  }
+        doc.setFontSize(11);
+        doc.setTextColor(0);
+        doc.text(
+          'B. Keterlambatan Penjemputan/Kepulangan',
+          14,
+          posisiY
+        );
 
-  doc.setFontSize(11);
-  doc.setTextColor(0);
+        autoTable(doc, {
+          head: [tableColumns],
+          body: buatBarisHarian(kepulanganHarian),
+          startY: posisiY + 4,
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [14, 116, 144] },
+        });
 
-  doc.text(
-    'B. Keterlambatan Penjemputan/Kepulangan',
-    14,
-    posisiY
-  );
+        posisiY =
+          ((doc as any).lastAutoTable?.finalY ?? posisiY + 4) + 10;
+      }
 
-  autoTable(doc, {
-    head: [tableColumns],
-    body: buatBarisHarian(kepulanganHarian),
-    startY: posisiY + 4,
-    styles: {
-      fontSize: 8,
-    },
-    headStyles: {
-      fillColor: [14, 116, 144],
-    },
-  });
-}
-    doc.save(
-      `rekap_keterlambatan_harian_${selectedDailyDate}.pdf`
-    );
-  } catch (error) {
-    console.error('Gagal membuat PDF harian:', error);
-    alert('Gagal mengunduh PDF harian. Silakan coba kembali.');
-  }
-};
+      if (latestPickupRows.length > 0) {
+        if (posisiY > 150) {
+          doc.addPage();
+          posisiY = 18;
+        }
+
+        const currentTime = getCurrentTimeValue();
+
+        doc.setFontSize(11);
+        doc.setTextColor(0);
+        doc.text('C. Monitoring Penjemputan Siswa', 14, posisiY);
+
+        autoTable(doc, {
+          head: [[
+            'Nama Siswa',
+            'Kelas',
+            'Jam Pulang',
+            'Jam Input',
+            'Jam Dijemput',
+            'Menunggu',
+            'Total Terlambat',
+            'Status',
+          ]],
+          body: latestPickupRows.map((row) => {
+            const pickupInfo = getPickupExportInfo(row, currentTime);
+
+            return [
+              row.nama_siswa,
+              row.kelas,
+              row.jam_standar?.slice(0, 5) || '-',
+              pickupInfo.initialInputTime,
+              pickupInfo.pickupTime,
+              pickupInfo.waitingLabel,
+              pickupInfo.totalDelayLabel,
+              pickupInfo.statusLabel,
+            ];
+          }),
+          startY: posisiY + 4,
+          styles: { fontSize: 8 },
+          headStyles: { fillColor: [124, 58, 237] },
+          columnStyles: {
+            0: { cellWidth: 42 },
+            5: { cellWidth: 35 },
+            7: { cellWidth: 30 },
+          },
+        });
+      }
+
+      doc.save(
+        `rekap_keterlambatan_harian_${selectedDailyDate}.pdf`
+      );
+    } catch (error) {
+      console.error('Gagal membuat PDF harian:', error);
+      alert('Gagal memuat data monitoring penjemputan untuk PDF harian.');
+    }
+  };
 
   return (
     <div className="space-y-6">
