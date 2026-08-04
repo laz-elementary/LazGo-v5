@@ -143,12 +143,12 @@ const getPickupExportInfo = (
     statusLabel: isWaiting ? 'Masih menunggu' : 'Selesai dijemput',
     waitingLabel:
       waitingMinutes === null
-        ? 'Belum diperbarui'
-        : isWaiting
-          ? `${waitingMinutes} mnt (berjalan)`
-          : `${waitingMinutes} mnt`,
+        ? 'Belum ada jam dijemput'
+        : `${waitingMinutes} mnt`,
     totalDelayLabel: isWaiting
-      ? `≥${totalDelayMinutes} mnt`
+      ? isToday
+        ? `${totalDelayMinutes} mnt (berjalan)`
+        : `Min. ${totalDelayMinutes} mnt`
       : `${totalDelayMinutes} mnt`,
   };
 };
@@ -1199,10 +1199,10 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
             'Nama Siswa',
             'Kelas',
             'Jam Pulang',
-            'Jam Input',
+            'Dicatat Belum Dijemput',
             'Jam Dijemput',
-            'Menunggu',
-            'Total Terlambat',
+            'Menunggu Sejak Dicatat',
+            'Total dari Jam Pulang',
             'Status',
           ]],
           body: pickupRows.map((row) => {
@@ -1394,10 +1394,10 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
             'Nama Siswa',
             'Kelas',
             'Jam Pulang',
-            'Jam Input',
+            'Dicatat Belum Dijemput',
             'Jam Dijemput',
-            'Menunggu',
-            'Total Terlambat',
+            'Menunggu Sejak Dicatat',
+            'Total dari Jam Pulang',
             'Status',
           ]],
           body: latestPickupRows.map((row) => {
