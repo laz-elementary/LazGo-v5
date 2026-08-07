@@ -2004,45 +2004,54 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {repeatedStudentAlerts.map((student) => {
-              const needsNotification = student.totalCount > 3;
+          <div className="mb-2 flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
+            <span className="text-base">↕</span>
+            <span>
+              Scroll untuk melihat siswa lainnya ({repeatedStudentAlerts.length} siswa)
+            </span>
+          </div>
 
-              return (
-                <div
-                  key={getStudentKey(student.name, student.className)}
-                  className={`rounded-lg border p-3 ${
-                    needsNotification
-                      ? 'border-rose-200 bg-white dark:border-rose-800 dark:bg-gray-800'
-                      : 'border-amber-200 bg-white dark:border-amber-800 dark:bg-gray-800'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-bold text-gray-900 dark:text-white">{student.name}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{student.className}</p>
+          <div className="max-h-[320px] overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {repeatedStudentAlerts.map((student) => {
+                const needsNotification = student.totalCount > 3;
+
+                return (
+                  <div
+                    key={getStudentKey(student.name, student.className)}
+                    className={`rounded-lg border p-3 ${
+                      needsNotification
+                        ? 'border-rose-200 bg-white dark:border-rose-800 dark:bg-gray-800'
+                        : 'border-amber-200 bg-white dark:border-amber-800 dark:bg-gray-800'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-bold text-gray-900 dark:text-white">{student.name}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">{student.className}</p>
+                      </div>
+
+                      <span
+                        className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold ${
+                          needsNotification
+                            ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300'
+                            : 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
+                        }`}
+                      >
+                        {needsNotification ? '🔴 NOTIFIKASI' : '⚠️ PERHATIAN'}
+                      </span>
                     </div>
 
-                    <span
-                      className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold ${
-                        needsNotification
-                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-300'
-                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300'
-                      }`}
-                    >
-                      {needsNotification ? '🔴 NOTIFIKASI' : '⚠️ PERHATIAN'}
-                    </span>
+                    <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">
+                      {student.totalCount} kali terlambat bulan ini
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Kedatangan: {student.arrivalCount}x · Kepulangan: {student.pickupCount}x
+                    </p>
                   </div>
-
-                  <p className="mt-3 text-sm font-bold text-gray-900 dark:text-white">
-                    {student.totalCount} kali terlambat bulan ini
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Kedatangan: {student.arrivalCount}x · Kepulangan: {student.pickupCount}x
-                  </p>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
