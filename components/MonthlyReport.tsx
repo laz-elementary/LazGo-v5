@@ -41,6 +41,25 @@ type PickupTrackingRow = {
   status_penjemputan: 'menunggu' | 'selesai' | null;
 };
 
+type MonthlyStudentAccumulation = {
+  name: string;
+  className: string;
+  totalCount: number;
+  arrivalCount: number;
+  pickupCount: number;
+  totalMinutes: number;
+  arrivalMinutes: number;
+  pickupMinutes: number;
+  dateDetails: Array<{
+    dateKey: string;
+    dateLabel: string;
+    totalMinutes: number;
+    totalCount: number;
+    arrivalCount: number;
+    pickupCount: number;
+  }>;
+};
+
 const getCurrentTimeValue = () => {
   const now = new Date();
   return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -214,6 +233,7 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
 
   // Filter state for separate records breakdown table
   const [recordSearch, setRecordSearch] = useState('');
+  const [accumulationSearch, setAccumulationSearch] = useState('');
   const [recordDateFilter, setRecordDateFilter] =
   useState('');
   const [classFilter, setClassFilter] = useState('');
@@ -744,6 +764,134 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
   );
 
 
+  // Akumulasi keterlambatan setiap siswa dalam satu bulan.
+  const monthlyStudentAccumulation = useMemo<MonthlyStudentAccumulation[]>(() => {
+    const studentMap = new Map<
+      string,
+      Omit<MonthlyStudentAccumulation, 'dateDetails'> & {
+        dateMap: Map<
+          string,
+          MonthlyStudentAccumulation['dateDetails'][number]
+        >;
+      }
+    >();
+
+    filteredRecordsForMonth.forEach((record) => {
+      const key = getStudentKey(record.name, record.className);
+      const durationMinutes = Number(record.durationMinutes) || 0;
+      const dateKey = getLocalDateKey(record.id);
+      const isPickup = record.tardinessType === 'kepulangan';
+
+      const currentStudent = studentMap.get(key) || {
+        name: record.name,
+        className: record.className,
+        totalCount: 0,
+        arrivalCount: 0,
+        pickupCount: 0,
+        totalMinutes: 0,
+        arrivalMinutes: 0,
+        pickupMinutes: 0,
+        dateMap: new Map(),
+      };
+
+      currentStudent.totalCount += 1;
+      currentStudent.totalMinutes += durationMinutes;
+
+      if (isPickup) {
+        currentStudent.pickupCount += 1;
+        currentStudent.pickupMinutes += durationMinutes;
+      } else {
+        currentStudent.arrivalCount += 1;
+        currentStudent.arrivalMinutes += durationMinutes;
+      }
+
+      const currentDate = currentStudent.dateMap.get(dateKey) || {
+        dateKey,
+        dateLabel: new Date(`${dateKey}T00:00:00`).toLocaleDateString(
+          'id-ID',
+          {
+            day: 'numeric',
+            month: 'short',
+          }
+        ),
+        totalMinutes: 0,
+        totalCount: 0,
+        arrivalCount: 0,
+        pickupCount: 0,
+      };
+
+      currentDate.totalMinutes += durationMinutes;
+      currentDate.totalCount += 1;
+
+      if (isPickup) {
+        currentDate.pickupCount += 1;
+      } else {
+        currentDate.arrivalCount += 1;
+      }
+
+      currentStudent.dateMap.set(dateKey, currentDate);
+      studentMap.set(key, currentStudent);
+    });
+
+    return Array.from(studentMap.values())
+      .map(({ dateMap, ...student }) => ({
+        ...student,
+        dateDetails: Array.from(dateMap.values()).sort((a, b) =>
+          a.dateKey.localeCompare(b.dateKey)
+        ),
+      }))
+      .sort((a, b) => {
+        if (b.totalMinutes !== a.totalMinutes) {
+          return b.totalMinutes - a.totalMinutes;
+        }
+
+        if (b.totalCount !== a.totalCount) {
+          return b.totalCount - a.totalCount;
+        }
+
+        const classComparison = a.className.localeCompare(
+          b.className,
+          'id',
+          {
+            numeric: true,
+            sensitivity: 'base',
+          }
+        );
+
+        if (classComparison !== 0) {
+          return classComparison;
+        }
+
+        return a.name.localeCompare(b.name, 'id', {
+          sensitivity: 'base',
+        });
+      });
+  }, [filteredRecordsForMonth]);
+
+  const filteredMonthlyStudentAccumulation = useMemo(() => {
+    const query = accumulationSearch.trim().toLocaleLowerCase('id-ID');
+
+    if (!query) {
+      return monthlyStudentAccumulation;
+    }
+
+    return monthlyStudentAccumulation.filter(
+      (student) =>
+        student.name.toLocaleLowerCase('id-ID').includes(query) ||
+        student.className.toLocaleLowerCase('id-ID').includes(query)
+    );
+  }, [monthlyStudentAccumulation, accumulationSearch]);
+
+  const formatAccumulationDates = (
+    student: MonthlyStudentAccumulation
+  ) =>
+    student.dateDetails
+      .map(
+        (date) =>
+          `${date.dateLabel}: ${date.totalMinutes} mnt`
+      )
+      .join('; ');
+
   const getMonthlyFrequency = (record: TardinessRecord) =>
     monthlyStudentFrequencyMap.get(
       getStudentKey(record.name, record.className)
@@ -895,44 +1043,79 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
         'Status Alert',
       ];
 
-      const csvContent = [
-        headers.join(','),
-        ...sortedRecordsForExport.map((record) => {
-          const monthlyCount = getMonthlyFrequency(record);
-          const recordDateKey = getLocalDateKey(record.id);
-          const pickupRow =
-            record.tardinessType === 'kepulangan'
-              ? pickupRowMap.get(
-                  getPickupTrackingKey(
-                    recordDateKey,
-                    record.name,
-                    record.className
-                  )
-                )
-              : undefined;
-          const pickupInfo = pickupRow
-            ? getPickupExportInfo(pickupRow, currentTime)
-            : null;
+      const accumulationHeaders = [
+        'Nama Siswa',
+        'Kelas',
+        'Total Kejadian',
+        'Kedatangan',
+        'Kepulangan',
+        'Total Keterlambatan (mnt)',
+        'Total Kedatangan (mnt)',
+        'Total Kepulangan (mnt)',
+        'Tanggal dan Durasi',
+        'Status Alert',
+      ];
 
-          return [
-            `"${record.id}"`,
-            `"${new Date(record.id).toLocaleDateString('id-ID')}"`,
-            `"${record.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan'}"`,
-            `"${record.arrivalTime}"`,
-            `"${record.schoolStartTime || (record.tardinessType === 'kepulangan' ? '14:00' : '07:30')}"`,
-            `"${pickupInfo?.initialInputTime || ''}"`,
-            `"${pickupInfo?.pickupTime === '-' ? '' : pickupInfo?.pickupTime || ''}"`,
-            `"${pickupInfo?.waitingLabel || ''}"`,
-            `"${pickupInfo?.statusLabel || ''}"`,
-            `"${record.name}"`,
-            `"${record.className}"`,
-            record.durationMinutes,
-            `"${record.category}"`,
-            `"${(record.reason || '').replace(/"/g, '""')}"`,
-            `"${monthlyCount}x"`,
-            `"${getRepeatAlertStatus(monthlyCount)}"`,
-          ].join(',');
-        }),
+      const accumulationRows = monthlyStudentAccumulation.map((student) =>
+        [
+          `"${student.name.replace(/"/g, '""')}"`,
+          `"${student.className.replace(/"/g, '""')}"`,
+          student.totalCount,
+          student.arrivalCount,
+          student.pickupCount,
+          student.totalMinutes,
+          student.arrivalMinutes,
+          student.pickupMinutes,
+          `"${formatAccumulationDates(student).replace(/"/g, '""')}"`,
+          `"${getRepeatAlertStatus(student.totalCount)}"`,
+        ].join(',')
+      );
+
+      const detailedRows = sortedRecordsForExport.map((record) => {
+        const monthlyCount = getMonthlyFrequency(record);
+        const recordDateKey = getLocalDateKey(record.id);
+        const pickupRow =
+          record.tardinessType === 'kepulangan'
+            ? pickupRowMap.get(
+                getPickupTrackingKey(
+                  recordDateKey,
+                  record.name,
+                  record.className
+                )
+              )
+            : undefined;
+        const pickupInfo = pickupRow
+          ? getPickupExportInfo(pickupRow, currentTime)
+          : null;
+
+        return [
+          `"${record.id}"`,
+          `"${new Date(record.id).toLocaleDateString('id-ID')}"`,
+          `"${record.tardinessType === 'kepulangan' ? 'Kepulangan' : 'Kedatangan'}"`,
+          `"${record.arrivalTime}"`,
+          `"${record.schoolStartTime || (record.tardinessType === 'kepulangan' ? '14:00' : '07:30')}"`,
+          `"${pickupInfo?.initialInputTime || ''}"`,
+          `"${pickupInfo?.pickupTime === '-' ? '' : pickupInfo?.pickupTime || ''}"`,
+          `"${pickupInfo?.waitingLabel || ''}"`,
+          `"${pickupInfo?.statusLabel || ''}"`,
+          `"${record.name.replace(/"/g, '""')}"`,
+          `"${record.className.replace(/"/g, '""')}"`,
+          record.durationMinutes,
+          `"${record.category}"`,
+          `"${(record.reason || '').replace(/"/g, '""')}"`,
+          `"${monthlyCount}x"`,
+          `"${getRepeatAlertStatus(monthlyCount)}"`,
+        ].join(',');
+      });
+
+      const csvContent = [
+        '"AKUMULASI KETERLAMBATAN PER SISWA"',
+        accumulationHeaders.join(','),
+        ...accumulationRows,
+        '',
+        '"RINCIAN KETERLAMBATAN PER KEJADIAN"',
+        headers.join(','),
+        ...detailedRows,
       ].join('\n');
 
       const blob = new Blob([`\uFEFF${csvContent}`], {
@@ -1010,6 +1193,21 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
         };
       });
 
+      const accumulationSummary = monthlyStudentAccumulation.map(
+        (student) => ({
+          'Nama Siswa': student.name,
+          Kelas: student.className,
+          'Total Kejadian': student.totalCount,
+          Kedatangan: student.arrivalCount,
+          Kepulangan: student.pickupCount,
+          'Total Keterlambatan (menit)': student.totalMinutes,
+          'Total Kedatangan (menit)': student.arrivalMinutes,
+          'Total Kepulangan (menit)': student.pickupMinutes,
+          'Tanggal dan Durasi': formatAccumulationDates(student),
+          'Status Alert': getRepeatAlertStatus(student.totalCount),
+        })
+      );
+
       const repeatedSummary = repeatedStudentAlerts.map((student) => ({
         'Nama Siswa': student.name,
         Kelas: student.className,
@@ -1039,6 +1237,15 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
       });
 
       const workbook = XLSX.utils.book_new();
+
+      const accumulationWorksheet =
+        XLSX.utils.json_to_sheet(accumulationSummary);
+      XLSX.utils.book_append_sheet(
+        workbook,
+        accumulationWorksheet,
+        'Akumulasi per Siswa'
+      );
+
       const detailWorksheet = XLSX.utils.json_to_sheet(dataToExport);
       XLSX.utils.book_append_sheet(
         workbook,
@@ -1103,6 +1310,57 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
 
       let posisiY = 40;
       doc.setTextColor(0);
+
+      if (monthlyStudentAccumulation.length > 0) {
+        doc.setFontSize(11);
+        doc.text(
+          'Akumulasi Keterlambatan per Siswa',
+          14,
+          posisiY
+        );
+
+        autoTable(doc, {
+          head: [[
+            'Nama Siswa',
+            'Kelas',
+            'Total Kejadian',
+            'Kedatangan',
+            'Kepulangan',
+            'Total Menit',
+            'Tanggal dan Durasi',
+          ]],
+          body: monthlyStudentAccumulation.map((student) => [
+            student.name,
+            student.className,
+            `${student.totalCount}x`,
+            `${student.arrivalCount}x / ${student.arrivalMinutes} mnt`,
+            `${student.pickupCount}x / ${student.pickupMinutes} mnt`,
+            `${student.totalMinutes} mnt`,
+            formatAccumulationDates(student),
+          ]),
+          startY: posisiY + 4,
+          styles: {
+            fontSize: 7,
+            cellPadding: 1.8,
+            overflow: 'linebreak',
+          },
+          headStyles: {
+            fillColor: [2, 132, 199],
+          },
+          columnStyles: {
+            0: { cellWidth: 42 },
+            1: { cellWidth: 25 },
+            2: { cellWidth: 20 },
+            3: { cellWidth: 30 },
+            4: { cellWidth: 30 },
+            5: { cellWidth: 24 },
+            6: { cellWidth: 95 },
+          },
+        });
+
+        posisiY =
+          ((doc as any).lastAutoTable?.finalY ?? posisiY + 4) + 10;
+      }
 
       if (repeatedStudentAlerts.length > 0) {
         doc.setFontSize(11);
@@ -2224,16 +2482,144 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
         </div>
       )}
 
+      {/* AKUMULASI KETERLAMBATAN PER SISWA */}
+      <div className="space-y-4 rounded-xl border border-gray-100 bg-white p-6 shadow-md dark:border-gray-700 dark:bg-gray-800">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h3 className="flex items-center gap-2 text-lg font-bold text-gray-900 dark:text-white">
+              <TagIcon className="h-5 w-5 text-sky-600" />
+              Akumulasi Keterlambatan per Siswa
+            </h3>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Setiap siswa tampil satu kali dengan total kejadian, total menit, dan tanggal keterlambatan selama bulan {monthNames[selectedMonth]} {selectedYear}.
+            </p>
+          </div>
+
+          <div className="relative w-full md:w-64">
+            <SearchIcon className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              value={accumulationSearch}
+              onChange={(event) =>
+                setAccumulationSearch(event.target.value)
+              }
+              placeholder="Cari nama atau kelas..."
+              className="w-full rounded-lg border border-gray-300 bg-gray-50 py-2 pl-9 pr-3 text-xs text-gray-900 focus:outline-none focus:ring-2 focus:ring-sky-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+            />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500 dark:text-gray-400">
+          <span>
+            {filteredMonthlyStudentAccumulation.length} siswa · Diurutkan dari total menit terbesar
+          </span>
+          <span>↕ Scroll untuk melihat siswa lainnya</span>
+        </div>
+
+        <div className="max-h-[460px] overflow-auto rounded-lg border border-gray-200 dark:border-gray-700">
+          <table className="w-full min-w-[1050px] text-left text-sm text-gray-700 dark:text-gray-300">
+            <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-700">
+              <tr>
+                <th className="px-4 py-3">No.</th>
+                <th className="px-4 py-3">Nama Siswa</th>
+                <th className="px-4 py-3">Kelas</th>
+                <th className="px-4 py-3 text-center">Total Kejadian</th>
+                <th className="px-4 py-3">Kedatangan</th>
+                <th className="px-4 py-3">Kepulangan</th>
+                <th className="px-4 py-3">Total Keterlambatan</th>
+                <th className="px-4 py-3">Tanggal dan Durasi</th>
+              </tr>
+            </thead>
+
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {filteredMonthlyStudentAccumulation.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="px-4 py-10 text-center text-gray-500 dark:text-gray-400"
+                  >
+                    Tidak ada data siswa yang sesuai.
+                  </td>
+                </tr>
+              ) : (
+                filteredMonthlyStudentAccumulation.map(
+                  (student, index) => (
+                    <tr
+                      key={getStudentKey(
+                        student.name,
+                        student.className
+                      )}
+                      className="align-top transition-colors hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    >
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {index + 1}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-gray-900 dark:text-white">
+                        {student.name}
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="rounded bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-800 dark:bg-gray-700 dark:text-gray-300">
+                          {student.className}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-700 dark:bg-sky-900/50 dark:text-sky-300">
+                          {student.totalCount}x
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-xs">
+                        <span className="font-semibold text-sky-700 dark:text-sky-300">
+                          {student.arrivalCount}x
+                        </span>
+                        <span className="ml-1 text-gray-500">
+                          · {student.arrivalMinutes} mnt
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap text-xs">
+                        <span className="font-semibold text-amber-700 dark:text-amber-300">
+                          {student.pickupCount}x
+                        </span>
+                        <span className="ml-1 text-gray-500">
+                          · {student.pickupMinutes} mnt
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 whitespace-nowrap">
+                        <span className="text-base font-bold text-rose-600 dark:text-rose-400">
+                          {student.totalMinutes} mnt
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex max-w-xl flex-wrap gap-1.5">
+                          {student.dateDetails.map((date) => (
+                            <span
+                              key={date.dateKey}
+                              className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-700 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                              title={`Kedatangan ${date.arrivalCount}x, Kepulangan ${date.pickupCount}x`}
+                            >
+                              {date.dateLabel}: <strong>{date.totalMinutes} mnt</strong>
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                )
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* DETAILED REKAP BULANAN TABLE */}
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-md border border-gray-100 dark:border-gray-700 space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <TagIcon className="w-5 h-5 text-sky-600" />
-              Rekap Data Keterlambatan ({detailedRecords.length} Catatan)
+              Rincian Keterlambatan per Kejadian ({detailedRecords.length} Catatan)
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-              Rincian seluruh keterlambatan siswa selama bulan {monthNames[selectedMonth]} {selectedYear}
+              Data per tanggal tetap tersedia sebagai rincian pendukung bulan {monthNames[selectedMonth]} {selectedYear}.
             </p>
           </div>
 
