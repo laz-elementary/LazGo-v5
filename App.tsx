@@ -357,7 +357,76 @@ useEffect(() => {
     return null;
   });
 
-  const [activeTab, setActiveTab] = useState<'daily' | 'monthly' | 'database'>('daily');
+  const getTabFromPath = () => {
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+
+  if (path === '/database-siswa-kelas') return 'database' as const;
+  if (path === '/laporan-harian' || path === '/laporan-bulanan') {
+    return 'monthly' as const;
+  }
+
+  return 'daily' as const;
+};
+
+const [activeTab, setActiveTabState] =
+  useState<'daily' | 'monthly' | 'database'>(() => getTabFromPath());
+
+const openMenu = useCallback(
+  (
+    tab: 'daily' | 'monthly' | 'database',
+    path: string
+  ) => {
+    if (window.location.pathname !== path) {
+      window.history.pushState({ tab }, '', path);
+    }
+
+    setActiveTabState(tab);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  },
+  []
+);
+
+useEffect(() => {
+  const syncMenuWithUrl = () => {
+    setActiveTabState(getTabFromPath());
+  };
+
+  const currentPath =
+    window.location.pathname.replace(/\/+$/, '') || '/';
+
+  const validPaths = [
+    '/input-harian',
+    '/laporan-harian',
+    '/laporan-bulanan',
+    '/database-siswa-kelas',
+  ];
+
+  if (!validPaths.includes(currentPath)) {
+    window.history.replaceState(
+      { tab: 'daily' },
+      '',
+      '/input-harian'
+    );
+  }
+
+  syncMenuWithUrl();
+  window.addEventListener('popstate', syncMenuWithUrl);
+
+  return () =>
+    window.removeEventListener('popstate', syncMenuWithUrl);
+}, []);
+
+2. Cari tiga bagian tombol menu lalu ubah onClick-nya:
+
+Input Harian:
+onClick={() => openMenu('daily', '/input-harian')}
+
+Laporan:
+onClick={() => openMenu('monthly', '/laporan-harian')}
+
+Database Siswa & Kelas:
+onClick={() => openMenu('database', '/database-siswa-kelas')}
+
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (localStorage.getItem('theme')) {
