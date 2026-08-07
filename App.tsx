@@ -416,17 +416,6 @@ useEffect(() => {
     window.removeEventListener('popstate', syncMenuWithUrl);
 }, []);
 
-2. Cari tiga bagian tombol menu lalu ubah onClick-nya:
-
-Input Harian:
-onClick={() => openMenu('daily', '/input-harian')}
-
-Laporan:
-onClick={() => openMenu('monthly', '/laporan-harian')}
-
-Database Siswa & Kelas:
-onClick={() => openMenu('database', '/database-siswa-kelas')}
-
 
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (localStorage.getItem('theme')) {
@@ -865,18 +854,20 @@ if (!session) {
             <TabButton
               label="Input Harian"
               isActive={activeTab === 'daily'}
-              onClick={() => setActiveTab('daily')}
+              onClick={() => openMenu('daily', '/input-harian')}
             />
             <TabButton
               label="Laporan Bulanan"
               isActive={activeTab === 'monthly'}
-              onClick={() => setActiveTab('monthly')}
+              onClick={() => openMenu('monthly', '/laporan-harian')}
             />
             <TabButton
               label="Database Siswa & Kelas"
               icon={<DatabaseIcon className="w-4 h-4" />}
               isActive={activeTab === 'database'}
-              onClick={() => setActiveTab('database')}
+              onClick={() =>
+  openMenu('database', '/database-siswa-kelas')
+}
             />
           </div>
         </div>
