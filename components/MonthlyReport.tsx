@@ -170,8 +170,47 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
 
   return `${year}-${month}-${day}`;
 });
-  const [reportMode, setReportMode] =
-  useState<'daily' | 'monthly'>('daily');
+  const [reportMode, setReportMode] = useState<'daily' | 'monthly'>(() =>
+    window.location.pathname === '/laporan-bulanan' ? 'monthly' : 'daily'
+  );
+
+  const changeReportMode = (mode: 'daily' | 'monthly') => {
+    const nextPath = mode === 'daily' ? '/laporan-harian' : '/laporan-bulanan';
+
+    setReportMode(mode);
+
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState({ reportMode: mode }, '', nextPath);
+    }
+
+    document.title =
+      mode === 'daily'
+        ? 'Rekap Harian | LazGo'
+        : 'Rekap Bulanan | LazGo';
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    const syncReportModeWithUrl = () => {
+      const mode =
+        window.location.pathname === '/laporan-bulanan'
+          ? 'monthly'
+          : 'daily';
+
+      setReportMode(mode);
+      document.title =
+        mode === 'daily'
+          ? 'Rekap Harian | LazGo'
+          : 'Rekap Bulanan | LazGo';
+    };
+
+    syncReportModeWithUrl();
+    window.addEventListener('popstate', syncReportModeWithUrl);
+
+    return () =>
+      window.removeEventListener('popstate', syncReportModeWithUrl);
+  }, []);
 
   // Filter state for separate records breakdown table
   const [recordSearch, setRecordSearch] = useState('');
@@ -1441,7 +1480,7 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
   <div className="inline-flex rounded-xl border border-gray-200 bg-white p-1 shadow-sm dark:border-gray-700 dark:bg-gray-800">
     <button
       type="button"
-      onClick={() => setReportMode('daily')}
+      onClick={() => changeReportMode('daily')}
       className={`rounded-lg px-5 py-2 text-sm font-semibold transition-colors ${
         reportMode === 'daily'
           ? 'bg-sky-600 text-white'
@@ -1453,7 +1492,7 @@ export const MonthlyReport: React.FC<MonthlyReportProps> = ({
 
     <button
       type="button"
-      onClick={() => setReportMode('monthly')}
+      onClick={() => changeReportMode('monthly')}
       className={`rounded-lg px-5 py-2 text-sm font-semibold transition-colors ${
         reportMode === 'monthly'
           ? 'bg-sky-600 text-white'
